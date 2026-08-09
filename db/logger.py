@@ -79,6 +79,11 @@ def log_query(
     Returns:
         the id of the inserted row
     """
+    if accuracy_flag is not None and accuracy_flag not in {"correct", "incorrect", "unscored"}:
+        raise ValueError(
+            f"accuracy_flag must be one of: correct, incorrect, unscored (got {accuracy_flag!r})"
+        )
+
     with get_connection() as conn:
         cursor = conn.execute(
             """
