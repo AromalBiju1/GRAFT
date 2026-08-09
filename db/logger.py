@@ -133,9 +133,11 @@ def get_logs(system: str = None, limit: int = 100) -> list[dict]:
     Returns:
         list of dicts, one per row, with modules_fired parsed back into a list
     """
+    if limit <= 0:
+        raise ValueError(f"limit must be a positive integer (got {limit})")
+
     with get_connection() as conn:
         if system:
-            cursor = conn.execute(
                 """
                 SELECT * FROM query_logs
                 WHERE system = ?
