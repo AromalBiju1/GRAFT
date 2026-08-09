@@ -103,11 +103,18 @@ def log_query(
 def update_accuracy(log_id: int, accuracy_flag: str) -> None:
     """Update the accuracy_flag for an existing log row — useful when scoring
     happens after the fact during benchmarking, not at query time."""
+    if accuracy_flag not in {"correct", "incorrect", "unscored"}:
+        raise ValueError(
+            f"accuracy_flag must be one of: correct, incorrect, unscored (got {accuracy_flag!r})"
+        )
+
     with get_connection() as conn:
-        conn.execute(
+        cursor = conn.execute(
             "UPDATE query_logs SET accuracy_flag = ? WHERE id = ?",
             (accuracy_flag, log_id),
         )
+        if cursor.rowcount == 0:
+            raise KeyError(f"No query_logs row found with id={log_id}")
 
 
 def get_logs(system: str = None, limit: int = 100) -> list[dict]:
