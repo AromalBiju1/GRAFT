@@ -19,6 +19,14 @@ from datetime import datetime, timezone
 from contextlib import contextmanager
 
 DB_PATH = Path(__file__).parent / "graft_logs.db"
+VALID_ACCURACY_FLAGS = {"correct", "incorrect", "unscored"}
+
+
+def _validate_accuracy_flag(accuracy_flag: str) -> None:
+    if accuracy_flag is not None and accuracy_flag not in VALID_ACCURACY_FLAGS:
+        raise ValueError(
+            f"accuracy_flag must be one of {sorted(VALID_ACCURACY_FLAGS)} or None"
+        )
 
 
 @contextmanager
@@ -52,7 +60,10 @@ def init_db():
             """
         )
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_query_logs_system_timestamp ON query_logs(system, timestamp)"
+            """
+            CREATE INDEX IF NOT EXISTS idx_query_logs_system_timestamp
+            ON query_logs (system, timestamp DESC)
+            """
         )
 
 
@@ -79,11 +90,7 @@ def log_query(
     Returns:
         the id of the inserted row
     """
-    if accuracy_flag is not None and accuracy_flag not in {"correct", "incorrect", "unscored"}:
-        raise ValueError(
-            f"accuracy_flag must be one of: correct, incorrect, unscored (got {accuracy_flag!r})"
-        )
-
+    _validate_accuracy_flag(accuracy_flag)
     with get_connection() as conn:
         cursor = conn.execute(
             """
@@ -108,18 +115,14 @@ def log_query(
 def update_accuracy(log_id: int, accuracy_flag: str) -> None:
     """Update the accuracy_flag for an existing log row — useful when scoring
     happens after the fact during benchmarking, not at query time."""
-    if accuracy_flag not in {"correct", "incorrect", "unscored"}:
-        raise ValueError(
-            f"accuracy_flag must be one of: correct, incorrect, unscored (got {accuracy_flag!r})"
-        )
-
+    _validate_accuracy_flag(accuracy_flag)
     with get_connection() as conn:
         cursor = conn.execute(
             "UPDATE query_logs SET accuracy_flag = ? WHERE id = ?",
             (accuracy_flag, log_id),
         )
         if cursor.rowcount == 0:
-            raise KeyError(f"No query_logs row found with id={log_id}")
+            raise ValueError(f"No query_logs row found for id={log_id}")
 
 
 def get_logs(system: str = None, limit: int = 100) -> list[dict]:
@@ -134,10 +137,11 @@ def get_logs(system: str = None, limit: int = 100) -> list[dict]:
         list of dicts, one per row, with modules_fired parsed back into a list
     """
     if limit <= 0:
-        raise ValueError(f"limit must be a positive integer (got {limit})")
+        raise ValueError("limit must be a positive integer")
 
     with get_connection() as conn:
         if system:
+            cursor = conn.execute(
                 """
                 SELECT * FROM query_logs
                 WHERE system = ?
