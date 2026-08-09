@@ -51,6 +51,9 @@ def init_db():
             )
             """
         )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_query_logs_system_timestamp ON query_logs(system, timestamp)"
+        )
 
 
 def log_query(
