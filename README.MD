@@ -53,6 +53,10 @@ Document Corpus → Indexing Pipeline → Tree Store → Router
 
 ```
 graft/
+├── backend/            # FastAPI application
+├── frontend/           # React + Vite application
+├── vector_store/       # ChromaDB integration
+├── tests/              # backend and vector-store tests
 ├── indexing/           # tree construction: chunking, clustering, summarization
 ├── router/              # query complexity classification + activation gating
 ├── modules/
@@ -63,8 +67,6 @@ graft/
 ├── generation/          # final answer synthesis
 ├── baseline/            # flat "retrieve everything" RAG, for benchmarking
 ├── benchmark/           # evaluation harness, metrics, test question sets
-├── api/                 # FastAPI backend
-├── frontend/            # React interface (upload, query, results view)
 └── docs/                # architecture notes, SRS, references
 ```
 
@@ -80,16 +82,44 @@ graft/
 
 ## Getting Started
 
+Clone the repository and create the Python environment:
+
 ```bash
 git clone https://github.com/AromalBiju1/GRAFT
 cd GRAFT
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # fill in API keys / config
+python -m venv venv
 ```
 
-Run the baseline and indexing pipeline setup instructions are in `docs/setup.md`
-(add this as the project progresses).
+Activate it on Windows PowerShell and install dependencies:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+On macOS or Linux, activate it with `source venv/bin/activate` and copy the
+environment template with `cp .env.example .env`.
+
+Start the backend from the repository root:
+
+```bash
+uvicorn backend.app.main:app --reload
+```
+
+Verify it by opening `http://127.0.0.1:8000/health`. The response should be
+`{"status":"ok"}`.
+
+In another terminal, install and start the frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the local URL printed by Vite. The page should display “GRAFT” and
+“Frontend is running.”
 
 ### Vector store
 
