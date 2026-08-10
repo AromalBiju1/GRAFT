@@ -225,3 +225,4 @@ __marimo__/
 # Frontend dependencies and build output
 node_modules/
 frontend/dist/
+db/graft_logs.db
