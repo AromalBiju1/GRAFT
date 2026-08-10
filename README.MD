@@ -91,6 +91,33 @@ cp .env.example .env   # fill in API keys / config
 Run the baseline and indexing pipeline setup instructions are in `docs/setup.md`
 (add this as the project progresses).
 
+### Vector store
+
+`ChromaVectorStore` persists precomputed tree-node embeddings locally. Its default
+database location is `.graft/chroma`; pass `persist_path` to use another location.
+
+```python
+from vector_store import ChromaVectorStore
+
+store = ChromaVectorStore(persist_path=".graft/chroma")
+store.insert(
+    chunk_id="chunk_001",
+    document_id="doc_001",
+    text="Example leaf chunk",
+    embedding=[0.1, 0.2, 0.3],
+    metadata={"node_id": "node_001", "level": 0, "node_type": "leaf"},
+)
+
+results = store.query(
+    embedding=[0.1, 0.2, 0.3],
+    n_results=5,
+    filters={"level": 0},
+)
+```
+
+`filters` is passed to ChromaDB as its metadata `where` filter. Insertions use
+upsert behavior: inserting an existing `chunk_id` replaces that record.
+
 ## Team
 
 | Module | Owner |
