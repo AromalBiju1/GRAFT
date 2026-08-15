@@ -1,0 +1,1 @@
+"""Fact-lookup specialist module."""

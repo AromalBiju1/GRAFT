@@ -97,7 +97,7 @@ Run the baseline and indexing pipeline setup instructions are in `docs/setup.md`
 database location is `.graft/chroma`; pass `persist_path` to use another location.
 
 ```python
-from vector_store import ChromaVectorStore
+from indexing.vector_store import ChromaVectorStore
 
 store = ChromaVectorStore(persist_path=".graft/chroma")
 store.insert(
