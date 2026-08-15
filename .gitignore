@@ -1,6 +1,7 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
+*.pyc
 *$py.class
 
 # C extensions
@@ -149,6 +150,7 @@ activemq-data/
 
 # Environments
 .env
+.env.local
 .envrc
 .venv
 env/
@@ -220,5 +222,7 @@ __marimo__/
 # Local ChromaDB persistence
 .graft/
 
-# Node.js dependencies
+# Frontend dependencies and build output
 node_modules/
+frontend/dist/
+db/graft_logs.db
