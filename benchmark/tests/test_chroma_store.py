@@ -3,7 +3,7 @@
 import tempfile
 import unittest
 
-from vector_store import ChromaVectorStore
+from indexing.vector_store import ChromaVectorStore
 
 
 class ChromaVectorStoreTests(unittest.TestCase):
