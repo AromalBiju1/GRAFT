@@ -219,3 +219,5 @@ __marimo__/
 
 # Local ChromaDB persistence
 .graft/
+db/graft_logs.db
+.graft_logs.db
