@@ -36,13 +36,21 @@ document tree.
 
 ### Tree Node
 
+`indexing.tree_node.TreeNode` is a Python dataclass. The MVP uses a strict
+tree with hard clustering: each node has at most one `parent_id`, and
+`child_ids` is a list of child node identifiers. Multi-parent nodes are not
+supported. Callers supply identifiers and maintain parent-child links.
+
+The `to_dict()` tree-store representation is:
+
     {
       "node_id": "node_001",
-      "document_id": "doc_001",
       "level": 0,
       "text": "Chunk or summary text...",
       "parent_id": null,
+      "child_ids": [],
       "metadata": {
+        "document_id": "doc_001",
         "source": "example.pdf",
         "page": 1
       }
@@ -51,11 +59,21 @@ document tree.
 | Field | Type | Description |
 |---|---|---|
 | `node_id` | string | Unique tree node identifier |
-| `document_id` | string | Source document identifier |
-| `level` | integer | Tree depth/level |
+| `level` | integer | Tree level; chunks are level 0, summaries use higher levels |
 | `text` | string | Text represented by the node |
-| `parent_id` | string/null | Parent node identifier |
-| `metadata` | object | Source and processing metadata |
+| `embedding` | list[float]/null | Optional precomputed embedding; defaults to `None`, excluded from `to_dict()` |
+| `parent_id` | string/null | Single parent identifier; defaults to `None` for an unlinked node or root |
+| `child_ids` | list[string] | Child identifiers; defaults to a new empty list per node |
+| `metadata` | object | Source and processing metadata; defaults to a new empty dictionary per node |
+
+`node_id`, `text`, and `level` are required constructor arguments. Source
+document identifiers can be stored in `metadata["document_id"]`; there is no
+top-level `document_id` field on `TreeNode`.
+
+The `is_leaf` property is true when `level == 0` or `child_ids` is empty.
+`to_dict()` returns exactly `node_id`, `text`, `level`, `parent_id`,
+`child_ids`, and `metadata`. Embedding generation, clustering, summarization,
+and persistence are outside this data structure's responsibilities.
 
 ---
 
