@@ -79,7 +79,8 @@ and persistence are outside this data structure's responsibilities.
 
 ## 3. Indexing Pipeline → Vector Store
 
-The indexing pipeline creates embeddings for searchable document chunks.
+The indexing pipeline supplies precomputed embeddings for searchable document
+chunks and higher-level summary nodes.
 
 ### Input
 
@@ -106,6 +107,47 @@ The indexing pipeline creates embeddings for searchable document chunks.
 
 The vector store should store the embedding together with its associated
 metadata and return matching chunks and relevance scores during retrieval.
+
+### Persisting TreeNode objects
+
+`indexing.store.persist_tree_nodes(nodes, vector_store)` persists existing
+`TreeNode` objects through `ChromaVectorStore.insert(chunk_id, document_id,
+text, embedding, metadata)`. It uses `node.node_id` as `chunk_id`, so inserting
+the same node ID again updates the record rather than creating a duplicate.
+It does not generate embeddings. An embedding of `None` raises
+`ValueError("Node <node_id> missing required embedding vector.")`.
+
+The adapter stores only the following metadata; arbitrary node metadata
+(including nested dictionaries) is not forwarded:
+
+| Metadata field | Type | Stored value |
+|---|---|---|
+| `node_id` | string | `node.node_id`, also used as the record ID |
+| `document_id` | string | `node.metadata["document_id"]`; must be non-empty |
+| `level` | integer | Level 0 is a leaf/document chunk; levels 1+ are summary layers |
+| `node_type` | string | `"leaf"` when `node.is_leaf`, otherwise `"summary"` |
+| `parent_id` | string | Single parent ID, or `""` when absent |
+| `child_ids` | string | Child IDs joined with commas, or `""` when empty |
+
+The existing `TreeNode.is_leaf` contract also treats a node with no children
+as a leaf, even at a higher level. Child IDs should not contain commas if
+consumers need to split the stored string back into IDs.
+
+The wrapper copies the separate `document_id` argument into stored metadata.
+Although the adapter defaults a missing document ID to `""`, the wrapper
+rejects missing, empty, or whitespace-only document IDs with `ValueError`.
+Callers must supply a non-empty document ID for every node, including summaries.
+Writes are sequential: an error does not roll back previously persisted nodes.
+
+Use the wrapper's metadata filter to select a tree level:
+
+```python
+leaves = vector_store.query([1.0, 0.0], n_results=5, filters={"level": 0})
+summaries = vector_store.query([1.0, 0.0], n_results=5, filters={"level": 1})
+```
+
+Query embeddings must match the stored embedding dimensions. Results contain
+`chunk_id`, `text`, `distance`, `score`, and `metadata`.
 
 ---
 
