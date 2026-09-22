@@ -377,7 +377,91 @@ Suggested error codes:
 
 ---
 
-## 12. Contract Version
+## 12. Indexing API → Vector Store (File Upload)
+
+File-based ingestion endpoint for the RAPTOR tree pipeline.
+
+### Route
+
+`POST /index` (multipart/form-data) — `api/routes/indexing.py`, registered in `backend/app/main.py` and `graft/api/main.py`.
+
+Alternative JSON route (legacy): `POST /index` with `application/json` `{"text": "...", "document_id": "...", "source": "..."}` remains on `graft/api/main.py` for backwards compatibility.
+
+### Multipart Request
+
+Content-Type: `multipart/form-data`
+Form fields: `files` (preferred, supports multiple) or `file` (single-file alias). Each part must be a `.pdf` or `.docx` file. Example with `curl`:
+
+```bash
+curl -X POST http://127.0.0.1:8000/index \
+  -F "files=@rfc793.pdf;type=application/pdf" \
+  -F "files=@sample.docx;type=application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+```
+
+Validation:
+- At least one file required (422 if missing).
+- Only `.pdf` and `.docx` are accepted (400 for other extensions, 422 for empty or non-extractable files).
+- Filename is sanitized to a `document_id` (stem, non-alphanumeric → `_`, truncated to 64 chars; duplicates get `_1`, `_2` suffixes).
+
+### Processing Flow
+
+1. Save each uploaded file to a temporary directory.
+2. `indexing/ingest.py` (`parse_document`) extracts plain text from `.pdf` / `.docx`.
+3. `indexing/chunker.py` (`chunk_text`) splits text into overlapping chunks (default `chunk_size=200` words, `overlap=20`).
+4. `indexing/builder.py` (`build_tree` / `build_tree_from_chunks`) generates deterministic hash-based stub embeddings (`_stub_embedding`, 16-dim, L2-normalised), clusters sequentially (`cluster_size=4`), and summarises with a truncated concatenation stub (`_summarise_stub`).
+5. `indexing/store.py` (`persist_tree_nodes`) upserts every `TreeNode` (with `embedding`, `parent_id`, `child_ids`, `metadata["document_id"]`) into `ChromaVectorStore` (`.graft/chroma`, collection `graft_tree_nodes`) via `insert`/`upsert`.
+
+### Multipart Response
+
+```json
+{
+  "status": "success",
+  "document_ids": ["rfc793", "sample"],
+  "total_chunks": 24,
+  "tree_stats": {
+    "total_nodes": 31,
+    "levels": {
+      "0_leaf": 24,
+      "1_summary": 6,
+      "2_root": 1
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `"success"` on completion |
+| `document_ids` | array[string] | Sanitized document IDs derived from filenames, one per uploaded file |
+| `total_chunks` | integer | Number of leaf nodes (level 0) |
+| `tree_stats.total_nodes` | integer | Total count of all tree nodes (leaves + summaries + root) |
+| `tree_stats.levels` | object | Mapping `"{level}_{kind}" → count`; kind is `leaf` (level 0), `summary` (intermediate), `root` (max level) |
+
+Every leaf node produced has a non-empty `embedding`; parent-child links satisfy `child.parent_id == parent.node_id`, `parent.child_ids` contains the child, and `parent.level == child.level + 1`. All nodes are persisted and queryable via `level` metadata filter.
+
+### JSON Request (legacy, graft/api)
+
+```json
+{
+  "text": "Document text...",
+  "document_id": "doc_001",
+  "source": "example.pdf"
+}
+```
+
+### JSON Response (legacy)
+
+```json
+{
+  "document_id": "doc_001",
+  "nodes_indexed": 7,
+  "nodes": [{"node_id": "...", "level": 0, "text": "...", "parent_id": null, "metadata": {}}]
+}
+```
+
+---
+
+## 13. Contract Version
 
 Initial contract version: **v1**
 
@@ -386,9 +470,11 @@ communicated to dependent components before merging.
 
 Optional fields may be added without breaking existing consumers.
 
+Contract update **v1.1** — added Section 12 indexing upload endpoint.
+
 ---
 
-## 13. Overall Data Flow
+## 14. Overall Data Flow
 
     Document
        |

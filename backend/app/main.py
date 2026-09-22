@@ -2,8 +2,12 @@
 
 from fastapi import FastAPI
 
+from api.routes.indexing import router as indexing_router
+
 
 app = FastAPI(title="GRAFT API")
+
+app.include_router(indexing_router)
 
 
 @app.get("/health")
