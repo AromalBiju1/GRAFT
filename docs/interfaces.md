@@ -34,6 +34,55 @@ document tree.
       }
     }
 
+### Ingestion chunks (Issue #13)
+
+Call `indexing.ingest.ingest_document(filepath, document_id="doc_001")`
+with a PDF or DOCX path to obtain `list[dict]`. Supply the source document's
+unique ID; the upload route already derives IDs from sanitized filenames and
+disambiguates duplicates. This helper does not generate a competing ID system.
+Parsing alone is available as `indexing.parser.parse_document(filepath)`;
+raw text can be chunked with `indexing.chunker.chunk_text(text, document_id=...)`.
+
+```python
+{
+    "chunk_id": str,
+    "document_id": str,
+    "text": str,
+    "chunk_index": int,
+    "token_count": int,
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `chunk_id` | SHA-256 hex digest of UTF-8 `f"{document_id}:{chunk_index}"`; identical ID and index always produce the same chunk ID |
+| `document_id` | Caller-supplied unique source document identifier |
+| `text` | Extracted text slice, with outer whitespace trimmed and internal formatting preserved |
+| `chunk_index` | Contiguous zero-based position in the document |
+| `token_count` | Actual `cl100k_base` token count of `text` |
+
+Tokenization uses `tiktoken.get_encoding("cl100k_base")`, treating literal
+special-token strings as ordinary document text. Defaults are approximately
+400 tokens per chunk and 50 tokens of overlap (`chunk_size=400, overlap=50`).
+Chunk ends prefer paragraph boundaries, then sentence boundaries. Overlap
+reuses the whole-sentence suffix closest to 50 tokens that leaves room for
+new content; it can be smaller or zero when sentences are long. A single
+sentence exceeding the target is emitted intact without overlap, so 400 is
+a soft target, not a strict upper bound. Sentence boundaries use punctuation
+followed by whitespace (a heuristic, not a linguistic sentence tokenizer).
+
+PDF pages and DOCX paragraphs are extracted in order, separated by blank
+lines; empty paragraphs/pages are skipped. No OCR is performed.
+`DocumentParsingError` (a `ValueError` subclass) covers empty, non-extractable,
+missing, unreadable and corrupted documents; underlying parser failures are
+chained. Unsupported extensions raise a clear `ValueError`.
+
+Compatibility note: `chunk_text` still accepts `source`, but returns only the
+five fields above. Its previous `metadata`/word-count output and positional
+chunk IDs are replaced by this contract. Existing tree builders accept these
+chunks, but external consumers of the old metadata must migrate before merge.
+Existing callers that explicitly set chunk sizes now specify token counts.
+
 ### Tree Node
 
 `indexing.tree_node.TreeNode` is a Python dataclass. The MVP uses a strict
@@ -407,7 +456,7 @@ Validation:
 
 1. Save each uploaded file to a temporary directory.
 2. `indexing/ingest.py` (`parse_document`) extracts plain text from `.pdf` / `.docx`.
-3. `indexing/chunker.py` (`chunk_text`) splits text into overlapping chunks (default `chunk_size=200` words, `overlap=20`).
+3. `indexing/chunker.py` (`chunk_text`) splits text into overlapping token chunks. The upload route explicitly uses `chunk_size=200`, `overlap=20`; the ingestion helper defaults to 400/50.
 4. `indexing/builder.py` (`build_tree` / `build_tree_from_chunks`) generates deterministic hash-based stub embeddings (`_stub_embedding`, 16-dim, L2-normalised), clusters sequentially (`cluster_size=4`), and summarises with a truncated concatenation stub (`_summarise_stub`).
 5. `indexing/store.py` (`persist_tree_nodes`) upserts every `TreeNode` (with `embedding`, `parent_id`, `child_ids`, `metadata["document_id"]`) into `ChromaVectorStore` (`.graft/chroma`, collection `graft_tree_nodes`) via `insert`/`upsert`.
 
