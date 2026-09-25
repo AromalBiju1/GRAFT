@@ -7,7 +7,7 @@ from pathlib import Path
 from docx import Document
 from pypdf import PdfWriter
 
-from indexing.parser import parse_document
+from indexing.parser import DocumentParsingError, parse_document
 
 
 class ParseDocumentTests(unittest.TestCase):
@@ -40,8 +40,8 @@ class ParseDocumentTests(unittest.TestCase):
             "First readable paragraph.\n\nSecond readable paragraph.",
         )
 
-    def test_missing_file_raises_file_not_found_error(self) -> None:
-        with self.assertRaisesRegex(FileNotFoundError, "Document not found"):
+    def test_missing_file_raises_document_parsing_error(self) -> None:
+        with self.assertRaisesRegex(DocumentParsingError, "Document not found"):
             parse_document("does-not-exist.pdf")
 
     def test_unsupported_extension_raises_value_error(self) -> None:

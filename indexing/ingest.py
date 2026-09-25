@@ -1,15 +1,28 @@
-"""Ingest alias for document parsing.
-
-This module re-exports :func:`indexing.parser.parse_document` under the name
-expected by the indexing pipeline spec (indexing/ingest.py). Keeping the
-canonical implementation in parser.py avoids duplication while satisfying
-the import path described in issue #17.
+"""Parse documents and return standard ingestion chunks.
 
 Usage:
-    from indexing.ingest import parse_document
-    text = parse_document("/path/to/file.pdf")
+    from indexing.ingest import ingest_document
+    chunks = ingest_document("/path/to/file.pdf", document_id="doc_001")
 """
 
-from indexing.parser import parse_document
+from os import PathLike
 
-__all__ = ["parse_document"]
+from indexing.chunker import chunk_text
+from indexing.parser import DocumentParsingError, parse_document
+
+
+def ingest_document(
+    filepath: str | PathLike[str],
+    *,
+    document_id: str,
+    chunk_size: int = 400,
+    overlap: int = 50,
+) -> list[dict]:
+    """Parse a PDF/DOCX path and chunk it using the caller's unique document ID."""
+    return chunk_text(
+        parse_document(filepath), document_id=document_id,
+        chunk_size=chunk_size, overlap=overlap,
+    )
+
+
+__all__ = ["parse_document", "ingest_document", "DocumentParsingError"]
