@@ -461,7 +461,112 @@ Every leaf node produced has a non-empty `embedding`; parent-child links satisfy
 
 ---
 
-## 13. Contract Version
+## 13. Recursive Summarization Engine (RAPTOR)
+
+`indexing/summarizer.py` (`RecursiveSummarizer`) builds the hierarchical
+document tree by iteratively clustering layer-`L` nodes and summarizing
+each cluster with an LLM into a layer-`L+1` node. Prompts live in
+`indexing/prompts.py`. The engine operates on `indexing.tree_node.TreeNode`
+(Section 2) and is covered by `tests/test_summarizer.py` with mocked LLM
+calls.
+
+### Prompt template (`indexing/prompts.py`)
+
+`SUMMARIZATION_PROMPT` is the single summarization contract. Render it with
+`format_summarization_prompt(concatenated_texts)` or `str.format`:
+
+```
+You are a precise technical summarizer building a hierarchical index.
+Summarize the following related text passages into a cohesive, standalone summary.
+Retain critical factual details, names, entities, and numeric claims.
+
+Passages:
+{concatenated_texts}
+
+Cohesive Summary:
+```
+
+`{concatenated_texts}` is `"\n\n".join(child.text for child in cluster)`.
+Do not rename the placeholder without updating `summarizer.py` and this doc.
+
+### Class interface (`indexing/summarizer.py`)
+
+```python
+from typing import List
+from indexing.tree_node import TreeNode
+
+class RecursiveSummarizer:
+    def __init__(self, llm_client, max_summary_tokens: int = 400, min_cluster_size: int = 3):
+        self.llm_client = llm_client
+        self.max_summary_tokens = max_summary_tokens
+        self.min_cluster_size = min_cluster_size
+
+    def summarize_cluster(self, child_nodes: List[TreeNode], level: int) -> TreeNode:
+        """Generates a summary node for a given cluster of child nodes."""
+
+    def build_tree_layers(self, leaf_nodes: List[TreeNode]) -> List[TreeNode]:
+        """Recursively clusters and summarizes nodes layer-by-layer until the root node is generated."""
+```
+
+The implementation additionally accepts optional `cluster_method`
+(`"gmm"` default, `"kmeans"`, `"umap_gmm"`) and `random_state` keyword
+arguments; the three spec parameters above are unchanged.
+
+| Member | Type | Description |
+|---|---|---|
+| `llm_client` | callable/object | `(prompt: str) -> str`, or an object with `generate` / `complete` / `summarize` / `invoke` / `chat`. Dict results with `text` / `summary` / `content` are coerced; empty summaries raise `ValueError` (fail loudly) |
+| `max_summary_tokens` | integer | Word-level truncation applied to every LLM summary; must be `>= 1` (default `400`) |
+| `min_cluster_size` | integer | Target group size; cluster count is `len(layer) // min_cluster_size`; sequential fallback groups by this size; must be `>= 2` (default `3`) |
+| `summarize_cluster(child_nodes, level)` | method | Validates non-empty cluster and `level >= 1`, calls the LLM, creates node `summary_L{level}_{counter:04d}` with mean child embedding (or `None`), sets `child.parent_id` and `summary.child_ids` bidirectionally |
+| `build_tree_layers(leaf_nodes)` | method | Full recursion; `[]` for empty input, single node returned as-is; otherwise loops cluster → summarize until 1 node remains. `build_raptor_tree(leaf_nodes)` is an alias; module-level `build_raptor_tree(leaf_nodes, llm_client, ...)` is a one-shot wrapper |
+
+### Clustering
+
+- `gmm`: `sklearn.mixture.GaussianMixture(n_components=n_clusters, covariance_type="diag")`.
+- `kmeans`: `sklearn.cluster.KMeans(n_clusters=n_clusters, n_init=10)`.
+- `umap_gmm`: `umap.UMAP` reduction then GMM; falls back to plain GMM when
+  `umap` is not installed or fitting fails.
+- `n_clusters = max(1, len(layer) // min_cluster_size)`, capped at
+  `len(layer) - 1`. All clustering is seeded (`random_state=42` default)
+  for determinism.
+- Fallback to sequential groups of `min_cluster_size` when embeddings are
+  missing, mismatched in dimension, non-finite, uniform (zero variance), or
+  any backend raises.
+
+### Linking and termination
+
+- Linking: `child.parent_id = summary.node_id`;
+  `summary.child_ids = [child.node_id for child in cluster]`.
+- Summary metadata: `{"document_id": <first child document_id or "doc_001">,
+  "child_count": len(cluster)}` plus shared `source` when unanimous.
+- Termination: stop when the current layer has 1 node (root, `parent_id is
+  None`), or when a layer has `<= 3` nodes (collapsed into one final root
+  summary). A `> 20` layer guard prevents runaway recursion.
+- Output: flat list of all nodes across layers `0` through root; input
+  leaves are mutated as links are created.
+
+Example (mocked LLM, as in `tests/test_summarizer.py`):
+
+```python
+from indexing.summarizer import RecursiveSummarizer
+from indexing.tree_node import TreeNode
+
+llm = lambda prompt: "Mock summary."
+summarizer = RecursiveSummarizer(llm, max_summary_tokens=400, min_cluster_size=3)
+leaves = [TreeNode(node_id=f"leaf_{i:04d}", text=f"Passage {i}.", level=0,
+                   embedding=[float(i), 0.0],
+                   metadata={"document_id": "doc_001"}) for i in range(6)]
+nodes = summarizer.build_tree_layers(leaves)
+by_id = {n.node_id: n for n in nodes}
+root = next(n for n in nodes if n.parent_id is None and n.level > 0)
+assert root.child_ids
+for child_id in root.child_ids:
+    assert by_id[child_id].parent_id == root.node_id  # bidirectional
+```
+
+---
+
+## 14. Contract Version
 
 Initial contract version: **v1**
 
@@ -472,9 +577,12 @@ Optional fields may be added without breaking existing consumers.
 
 Contract update **v1.1** — added Section 12 indexing upload endpoint.
 
+Contract update **v1.2** — added Section 13 recursive summarization engine
+and prompt template.
+
 ---
 
-## 14. Overall Data Flow
+## 15. Overall Data Flow
 
     Document
        |
