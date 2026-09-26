@@ -1,5 +1,10 @@
-"""Vector-store integrations for GRAFT."""
+"""Vector-store shim re-exporting ChromaVectorStore from indexing.
 
-from .chroma_store import ChromaVectorStore
+This alias exists so graft.indexing.pipeline and graft.retrieval can import
+`from vector_store import ChromaVectorStore` while the canonical implementation
+lives in indexing.vector_store.chroma_store.
+"""
+
+from indexing.vector_store import ChromaVectorStore
 
 __all__ = ["ChromaVectorStore"]

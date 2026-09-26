@@ -1,0 +1,1 @@
+"""Contradiction-detection specialist module."""
