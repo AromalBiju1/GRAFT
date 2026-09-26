@@ -24,8 +24,17 @@ object wrapping one under ``text`` / ``summary`` / ``content``).
 
 from __future__ import annotations
 
-from typing import Any, Callable, List
+import math
+from typing import Any, List
 
+from indexing.config import (
+    COLLAPSE_THRESHOLD,
+    DEFAULT_CLUSTER_METHOD,
+    DEFAULT_MAX_SUMMARY_TOKENS,
+    DEFAULT_MIN_CLUSTER_SIZE,
+    DEFAULT_RANDOM_STATE,
+    MAX_TREE_DEPTH,
+)
 from indexing.prompts import SUMMARIZATION_PROMPT
 from indexing.tree_node import TreeNode
 
@@ -38,10 +47,11 @@ class RecursiveSummarizer:
     def __init__(
         self,
         llm_client: Any,
-        max_summary_tokens: int = 400,
-        min_cluster_size: int = 3,
-        cluster_method: str = "gmm",
-        random_state: int = 42,
+        max_summary_tokens: int = DEFAULT_MAX_SUMMARY_TOKENS,
+        min_cluster_size: int = DEFAULT_MIN_CLUSTER_SIZE,
+        cluster_method: str = DEFAULT_CLUSTER_METHOD,
+        random_state: int = DEFAULT_RANDOM_STATE,
+        node_id_prefix: str = "summary",
     ) -> None:
         """Create a summarizer.
 
@@ -58,6 +68,10 @@ class RecursiveSummarizer:
                 ``"umap_gmm"`` (UMAP reduction + GMM; falls back to GMM when
                 UMAP is not installed).
             random_state: Seed for deterministic clustering.
+            node_id_prefix: Prefix for generated summary IDs
+                (``{prefix}_L{level}_{counter}``). Callers that build one tree
+                per document must pass a document-scoped prefix, otherwise IDs
+                collide across documents and parent links break.
 
         Raises:
             ValueError: On invalid ``max_summary_tokens``,
@@ -88,6 +102,9 @@ class RecursiveSummarizer:
         self.min_cluster_size = min_cluster_size
         self.cluster_method = cluster_method
         self.random_state = random_state
+        if not isinstance(node_id_prefix, str) or not node_id_prefix.strip():
+            raise ValueError("node_id_prefix must be a non-empty string")
+        self.node_id_prefix = node_id_prefix
         self._node_counter = 0
 
     # ------------------------------------------------------------------
@@ -185,7 +202,7 @@ class RecursiveSummarizer:
         guard = 0
         while len(current) > 1:
             guard += 1
-            if guard > 20:
+            if guard > MAX_TREE_DEPTH:
                 break
             clusters = self._cluster_nodes(current)
             next_layer: List[TreeNode] = []
@@ -197,7 +214,7 @@ class RecursiveSummarizer:
             level += 1
             if len(current) == 1:
                 break
-            if len(current) <= 3:
+            if len(current) <= COLLAPSE_THRESHOLD:
                 # Collapse the small layer into a single final root.
                 root = self.summarize_cluster(current, level=level + 1)
                 all_nodes.append(root)
@@ -219,7 +236,7 @@ class RecursiveSummarizer:
     # ------------------------------------------------------------------
 
     def _next_node_id(self, level: int) -> str:
-        node_id = f"summary_L{level}_{self._node_counter:04d}"
+        node_id = f"{self.node_id_prefix}_L{level}_{self._node_counter:04d}"
         self._node_counter += 1
         return node_id
 
@@ -267,10 +284,7 @@ class RecursiveSummarizer:
         text = self._coerce_text(result)
         if not text.strip():
             raise ValueError("LLM returned an empty summary")
-        words = text.split()
-        if len(words) > self.max_summary_tokens:
-            text = " ".join(words[: self.max_summary_tokens])
-        return text
+        return self._truncate_tokens(text)
 
     @staticmethod
     def _coerce_text(result: Any) -> str:
@@ -289,6 +303,7 @@ class RecursiveSummarizer:
         raise TypeError(f"LLM result of type {type(result).__name__} cannot be coerced to text")
 
     def _truncate_tokens(self, text: str) -> str:
+        """Cap *text* at ``max_summary_tokens`` whitespace-separated tokens."""
         words = text.split()
         if len(words) > self.max_summary_tokens:
             return " ".join(words[: self.max_summary_tokens])
@@ -299,8 +314,8 @@ class RecursiveSummarizer:
     def _cluster_nodes(self, nodes: List[TreeNode]) -> List[List[TreeNode]]:
         """Group ``nodes`` into clusters.
 
-        Uses ``cluster_method`` when embeddings are available; otherwise
-        falls back to sequential groups of ``min_cluster_size``.
+        Uses ``cluster_method`` when embeddings carry signal; otherwise falls
+        back to sequential groups of ``min_cluster_size``.
         """
         if len(nodes) <= self.min_cluster_size:
             return [list(nodes)]
@@ -311,6 +326,13 @@ class RecursiveSummarizer:
         if n_clusters <= 1:
             return [list(nodes)]
         n_clusters = min(n_clusters, len(nodes) - 1)
+        # Duplicate vectors cannot be separated: GMM/KMeans emit
+        # ConvergenceWarning and collapse to a single component, so cap the
+        # cluster count at the number of distinct points and bail out when
+        # that leaves nothing to discover.
+        n_clusters = min(n_clusters, int(self._distinct_rows(matrix)))
+        if n_clusters < 2:
+            return self._sequential_clusters(nodes)
         try:
             if self.cluster_method == "kmeans":
                 labels = self._kmeans_labels(matrix, n_clusters)
@@ -369,12 +391,24 @@ class RecursiveSummarizer:
         matrix = np.asarray(vectors, dtype=float)
         if matrix.shape != (len(nodes), dim):
             return None
-        if not all(__import__("math").isfinite(float(v)) for v in matrix.ravel()):
-            return None
-        # Uniform embeddings carry no signal — use sequential fallback.
-        if float(matrix.var()) == 0.0:
+        if not all(math.isfinite(float(v)) for v in matrix.ravel()):
             return None
         return matrix
+
+    @staticmethod
+    def _distinct_rows(matrix: Any) -> int:
+        """Number of unique embedding rows.
+
+        ``ndarray.var()`` flattens the matrix, so it reports non-zero variance
+        for identical rows whose dimensions differ (e.g. ``[1, 2, 3]``
+        repeated). Compare whole rows instead: a single distinct row means the
+        embeddings carry no clustering signal.
+        """
+        try:
+            import numpy as np
+        except ImportError:  # pragma: no cover - numpy ships with scikit-learn
+            return 0
+        return int(np.unique(matrix, axis=0).shape[0])
 
     def _gmm_labels(self, matrix: Any, n_clusters: int) -> list[int]:
         from sklearn.mixture import GaussianMixture
@@ -414,9 +448,9 @@ class RecursiveSummarizer:
 def build_raptor_tree(
     leaf_nodes: List[TreeNode],
     llm_client: Any,
-    max_summary_tokens: int = 400,
-    min_cluster_size: int = 3,
-    cluster_method: str = "gmm",
+    max_summary_tokens: int = DEFAULT_MAX_SUMMARY_TOKENS,
+    min_cluster_size: int = DEFAULT_MIN_CLUSTER_SIZE,
+    cluster_method: str = DEFAULT_CLUSTER_METHOD,
 ) -> List[TreeNode]:
     """Build a RAPTOR tree from ``leaf_nodes`` with a one-shot summarizer.
 

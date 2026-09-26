@@ -4,7 +4,13 @@ Implements:
   POST /index
   Payload: multipart/form-data with one or more files (.pdf, .docx)
   Flow: save temp -> parse (indexing/ingest.py) -> chunk (indexing/chunker.py)
-        -> embed + tree (indexing/builder.py) -> persist (ChromaVectorStore)
+        -> embed + tree (indexing/builder.py -> indexing/summarizer.py)
+        -> persist (indexing/store.py -> ChromaVectorStore)
+
+Tunables come from `indexing.config`; persistence targets come from
+`indexing.vector_store.chroma_store`. This module only handles HTTP concerns
+(upload validation, temp files, stats) — the pipeline itself lives in
+`indexing.builder`.
 
 Response:
 {
@@ -28,53 +34,64 @@ import re
 import tempfile
 from collections import Counter
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Sequence
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from indexing.builder import build_tree
+from indexing.builder import build_documents
+from indexing.config import (
+    ALLOWED_DOCUMENT_SUFFIXES,
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_MIN_CLUSTER_SIZE,
+    MAX_DOCUMENT_ID_LENGTH,
+)
 from indexing.ingest import parse_document
+from indexing.store import persist_tree_nodes
+from indexing.tree_node import TreeNode
 from indexing.vector_store import ChromaVectorStore
-
-try:
-    from graft.config import settings as graft_settings
-    DEFAULT_PERSIST_PATH = graft_settings.chroma_path
-    DEFAULT_COLLECTION = graft_settings.chroma_collection
-except Exception:
-    DEFAULT_PERSIST_PATH = Path(".graft/chroma")
-    DEFAULT_COLLECTION = "graft_tree_nodes"
+from indexing.vector_store.chroma_store import DEFAULT_COLLECTION_NAME, DEFAULT_PERSIST_PATH
 
 router = APIRouter(tags=["indexing"])
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx"}
-# Chunking tunables — small enough to yield multiple chunks for test PDFs,
-# large enough for real RFCs. Mirrors smoke-test expectations (24 leaf etc).
-DEFAULT_CHUNK_SIZE = 200
-DEFAULT_CHUNK_OVERLAP = 20
-DEFAULT_CLUSTER_SIZE = 4
+# Overridable per deployment (tests patch these); defaults are the
+# ChromaVectorStore module constants so there is a single source of truth.
+DEFAULT_PERSIST_PATH = Path(DEFAULT_PERSIST_PATH)
+DEFAULT_COLLECTION = DEFAULT_COLLECTION_NAME
+
+DOCUMENT_ID_FALLBACK = "doc_001"
 
 
 def _sanitize_document_id(filename: str) -> str:
-    """Derive a safe document_id from filename stem."""
-    stem = Path(filename).stem or "doc_001"
-    # Replace non-alphanumeric with underscore, keep lowercase
+    """Derive a safe document_id from a filename stem."""
+    stem = Path(filename).stem or DOCUMENT_ID_FALLBACK
     sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", stem).strip("_")
-    if not sanitized:
-        sanitized = "doc_001"
-    # Ensure non-empty and filesystem-safe
-    return sanitized[:64]
+    return (sanitized or DOCUMENT_ID_FALLBACK)[:MAX_DOCUMENT_ID_LENGTH]
+
+
+def _unique_document_id(candidate: str, taken: Sequence[str]) -> str:
+    """Return *candidate* or a ``_1``/``_2`` suffixed variant not in *taken*."""
+    if candidate not in taken:
+        return candidate
+    suffix = 1
+    while f"{candidate}_{suffix}" in taken:
+        suffix += 1
+    return f"{candidate}_{suffix}"
 
 
 def _validate_extension(filename: str) -> None:
     ext = Path(filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    if ext not in ALLOWED_DOCUMENT_SUFFIXES:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{ext or '<none>'}'; only .pdf and .docx are supported",
+            detail=(
+                f"Unsupported file type '{ext or '<none>'}'; only "
+                f"{' and '.join(sorted(ALLOWED_DOCUMENT_SUFFIXES))} are supported"
+            ),
         )
 
 
-def _build_levels_dict(nodes) -> dict[str, int]:
+def _build_levels_dict(nodes: Sequence[TreeNode]) -> dict[str, int]:
     """Return levels dict like {"0_leaf": 24, "1_summary": 6, "2_root": 1}."""
     if not nodes:
         return {}
@@ -82,14 +99,13 @@ def _build_levels_dict(nodes) -> dict[str, int]:
     counts = Counter(n.level for n in nodes)
     levels: dict[str, int] = {}
     for lvl in sorted(counts):
-        count = counts[lvl]
         if lvl == 0:
             label = f"{lvl}_leaf"
         elif lvl == max_level and max_level > 0:
             label = f"{lvl}_root"
         else:
             label = f"{lvl}_summary"
-        levels[label] = count
+        levels[label] = counts[lvl]
     return levels
 
 
@@ -98,7 +114,7 @@ async def index_documents(
     files: Annotated[list[UploadFile] | None, File(description="One or more .pdf or .docx files")] = None,
     file: Annotated[UploadFile | None, File(description="Single file alias")] = None,
 ) -> dict:
-    """Ingest raw documents into the hierarchical tree + vector store."""
+    """Ingest uploaded documents into the hierarchical tree + vector store."""
     # Support both `files` (multiple) and `file` (single) field names, and also
     # plain `files` sent as single file (FastAPI may wrap it as list).
     upload_files: list[UploadFile] = []
@@ -110,107 +126,93 @@ async def index_documents(
     if not upload_files:
         raise HTTPException(status_code=422, detail="At least one file must be uploaded")
 
-    # Validate extensions early
-    for uf in upload_files:
-        if not uf.filename:
+    for upload in upload_files:
+        if not upload.filename:
             raise HTTPException(status_code=422, detail="Uploaded file must have a filename")
-        _validate_extension(uf.filename)
+        _validate_extension(upload.filename)
 
-    all_nodes = []
     document_ids: list[str] = []
-    temp_dir: Path | None = None
+    all_nodes: list[TreeNode] = []
 
     try:
-        # Use a temporary directory to save uploaded files
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
-            for uf in upload_files:
-                assert uf.filename is not None
-                document_id = _sanitize_document_id(uf.filename)
-                # Ensure unique document_ids for duplicate filenames
-                base_id = document_id
-                suffix = 1
-                while document_id in document_ids:
-                    document_id = f"{base_id}_{suffix}"
-                    suffix += 1
+            documents: list[tuple[str, str, str]] = []
+
+            for upload in upload_files:
+                assert upload.filename is not None
+                document_id = _unique_document_id(
+                    _sanitize_document_id(upload.filename), document_ids
+                )
                 document_ids.append(document_id)
 
-                ext = Path(uf.filename).suffix.lower()
-                tmp_file = tmp_path / f"{document_id}{ext}"
-                # Read upload content
-                content = await uf.read()
+                content = await upload.read()
                 if not content:
-                    raise HTTPException(status_code=422, detail=f"File {uf.filename} is empty")
+                    raise HTTPException(
+                        status_code=422, detail=f"File {upload.filename} is empty"
+                    )
+
+                suffix = Path(upload.filename).suffix.lower()
+                tmp_file = tmp_path / f"{document_id}{suffix}"
                 tmp_file.write_bytes(content)
 
-                # Parse document via indexing/ingest -> indexing/parser
                 try:
                     text = parse_document(tmp_file)
                 except FileNotFoundError as exc:
                     raise HTTPException(status_code=500, detail=str(exc)) from exc
                 except ValueError as exc:
+                    # DocumentParsingError subclasses ValueError: unreadable or empty.
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
                 except Exception as exc:
-                    raise HTTPException(status_code=500, detail=f"Failed to parse {uf.filename}: {exc}") from exc
+                    raise HTTPException(
+                        status_code=500, detail=f"Failed to parse {upload.filename}: {exc}"
+                    ) from exc
 
-                if not text or not text.strip():
-                    raise HTTPException(status_code=422, detail=f"No extractable text in {uf.filename}")
-
-                # Chunk + embed + tree (builder handles embeddings)
-                try:
-                    nodes = build_tree(
-                        text,
-                        document_id=document_id,
-                        source=uf.filename,
-                        chunk_size=DEFAULT_CHUNK_SIZE,
-                        chunk_overlap=DEFAULT_CHUNK_OVERLAP,
-                        cluster_size=DEFAULT_CLUSTER_SIZE,
+                if not text.strip():
+                    raise HTTPException(
+                        status_code=422, detail=f"No extractable text in {upload.filename}"
                     )
-                except ValueError as exc:
-                    raise HTTPException(status_code=422, detail=str(exc)) from exc
-                except Exception as exc:
-                    raise HTTPException(status_code=500, detail=f"Failed to build tree for {uf.filename}: {exc}") from exc
+                documents.append((document_id, text, upload.filename))
 
-                if not nodes:
-                    raise HTTPException(status_code=422, detail=f"No chunks generated for {uf.filename}")
+            if not documents:
+                raise HTTPException(status_code=422, detail="No nodes generated from uploaded files")
 
-                all_nodes.extend(nodes)
+            # Chunk -> embed -> cluster -> summarize for every document.
+            try:
+                all_nodes = build_documents(
+                    documents,
+                    chunk_size=DEFAULT_CHUNK_SIZE,
+                    chunk_overlap=DEFAULT_CHUNK_OVERLAP,
+                    cluster_size=DEFAULT_MIN_CLUSTER_SIZE,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=f"Indexing failed: {exc}") from exc
 
-            # Persist all nodes to ChromaVectorStore
             if not all_nodes:
                 raise HTTPException(status_code=422, detail="No nodes generated from uploaded files")
 
-            # Use default persist path (.graft/chroma) for endpoint
             store = ChromaVectorStore(
                 persist_path=DEFAULT_PERSIST_PATH,
                 collection_name=DEFAULT_COLLECTION,
             )
             try:
-                from indexing.store import persist_tree_nodes
-
                 persist_tree_nodes(all_nodes, store)
             finally:
-                try:
-                    store.close()
-                except Exception:
-                    pass
+                store.close()
 
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Indexing failed: {exc}") from exc
 
-    # Compute stats
-    total_chunks = sum(1 for n in all_nodes if n.level == 0)
-    total_nodes = len(all_nodes)
-    levels = _build_levels_dict(all_nodes)
-
     return {
         "status": "success",
         "document_ids": document_ids,
-        "total_chunks": total_chunks,
+        "total_chunks": sum(1 for n in all_nodes if n.level == 0),
         "tree_stats": {
-            "total_nodes": total_nodes,
-            "levels": levels,
+            "total_nodes": len(all_nodes),
+            "levels": _build_levels_dict(all_nodes),
         },
     }

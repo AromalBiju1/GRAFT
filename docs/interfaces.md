@@ -456,9 +456,47 @@ Validation:
 
 1. Save each uploaded file to a temporary directory.
 2. `indexing/ingest.py` (`parse_document`) extracts plain text from `.pdf` / `.docx`.
-3. `indexing/chunker.py` (`chunk_text`) splits text into overlapping token chunks. The upload route explicitly uses `chunk_size=200`, `overlap=20`; the ingestion helper defaults to 400/50.
-4. `indexing/builder.py` (`build_tree` / `build_tree_from_chunks`) generates deterministic hash-based stub embeddings (`_stub_embedding`, 16-dim, L2-normalised), clusters sequentially (`cluster_size=4`), and summarises with a truncated concatenation stub (`_summarise_stub`).
-5. `indexing/store.py` (`persist_tree_nodes`) upserts every `TreeNode` (with `embedding`, `parent_id`, `child_ids`, `metadata["document_id"]`) into `ChromaVectorStore` (`.graft/chroma`, collection `graft_tree_nodes`) via `insert`/`upsert`.
+3. `indexing/chunker.py` (`chunk_text`) splits text into overlapping chunks. Sizes
+   are `cl100k_base` **tokens** (default `chunk_size=400`, `overlap=50` from
+   `indexing/config.py`), not words.
+4. `indexing/builder.py` (`build_documents` / `build_tree` / `build_tree_from_chunks`)
+   embeds every chunk (`_stub_embedding`, 16-dim, L2-normalised) and delegates
+   clustering + summarisation to `indexing/summarizer.py` (`RecursiveSummarizer`,
+   Section 13). Pass `llm_client=` to use a real model; the default is the
+   offline `_stub_llm_client`, so CI runs without network access.
+5. `indexing/store.py` (`persist_tree_nodes`) upserts every `TreeNode` (with
+   `embedding`, `parent_id`, `child_ids`, `metadata["document_id"]`) into
+   `ChromaVectorStore` (`.graft/chroma`, collection `graft_tree_nodes`) via
+   `insert`/`upsert`.
+
+### Chunk schema accepted by the builder
+
+`build_tree_from_chunks` normalises both chunk shapes in circulation, so leaf
+provenance survives either producer:
+
+    # current: indexing.chunker.chunk_text (flat keys)
+    {"chunk_id", "document_id", "text", "chunk_index", "token_count"}
+    # legacy: nested metadata
+    {"chunk_id", "document_id", "text", "metadata": {"source", "page", ...}}
+
+`source`, `page`, `chunk_index`, `token_count` and `word_count` are copied into
+leaf `TreeNode.metadata`; `metadata["document_id"]` is always set (the chunk's
+own `document_id` wins over the caller's fallback). This is what backs the
+`metadata.source` / `metadata.page` fields consumed by Retrieval → Router
+(Section 5).
+
+### Tree invariants
+
+- Every leaf has a non-empty `embedding`; summary nodes inherit the mean child
+  embedding, falling back to `_stub_embedding` when child vectors are unusable,
+  because `persist_tree_nodes` raises on a missing embedding.
+- `child.parent_id == parent.node_id`, `parent.child_ids` contains the child,
+  and `parent.level == child.level + 1`.
+- Node IDs are namespaced per document (`{document_id}_summary_L{level}_{n}`),
+  so multi-document indexing cannot collide and break parent links.
+- Every document yields a root summary with `parent_id is None`, including
+  single-chunk documents.
+
 
 ### Multipart Response
 
@@ -558,15 +596,19 @@ class RecursiveSummarizer:
 ```
 
 The implementation additionally accepts optional `cluster_method`
-(`"gmm"` default, `"kmeans"`, `"umap_gmm"`) and `random_state` keyword
-arguments; the three spec parameters above are unchanged.
+(`"gmm"` default, `"kmeans"`, `"umap_gmm"`), `random_state` and
+`node_id_prefix` keyword arguments; the three spec parameters above are
+unchanged.
 
 | Member | Type | Description |
 |---|---|---|
 | `llm_client` | callable/object | `(prompt: str) -> str`, or an object with `generate` / `complete` / `summarize` / `invoke` / `chat`. Dict results with `text` / `summary` / `content` are coerced; empty summaries raise `ValueError` (fail loudly) |
 | `max_summary_tokens` | integer | Word-level truncation applied to every LLM summary; must be `>= 1` (default `400`) |
 | `min_cluster_size` | integer | Target group size; cluster count is `len(layer) // min_cluster_size`; sequential fallback groups by this size; must be `>= 2` (default `3`) |
-| `summarize_cluster(child_nodes, level)` | method | Validates non-empty cluster and `level >= 1`, calls the LLM, creates node `summary_L{level}_{counter:04d}` with mean child embedding (or `None`), sets `child.parent_id` and `summary.child_ids` bidirectionally |
+| `cluster_method` | string | `"gmm"` (default), `"kmeans"`, or `"umap_gmm"` |
+| `random_state` | integer | Clustering seed for reproducible trees (default `42`) |
+| `node_id_prefix` | string | Prefix for generated IDs (`{prefix}_L{level}_{n}`). Callers building one tree per document must pass a document-scoped prefix or IDs collide |
+| `summarize_cluster(child_nodes, level)` | method | Validates non-empty cluster and `level >= 1`, calls the LLM, creates the summary node, sets `child.parent_id` and `summary.child_ids` bidirectionally |
 | `build_tree_layers(leaf_nodes)` | method | Full recursion; `[]` for empty input, single node returned as-is; otherwise loops cluster → summarize until 1 node remains. `build_raptor_tree(leaf_nodes)` is an alias; module-level `build_raptor_tree(leaf_nodes, llm_client, ...)` is a one-shot wrapper |
 
 ### Clustering
@@ -576,11 +618,15 @@ arguments; the three spec parameters above are unchanged.
 - `umap_gmm`: `umap.UMAP` reduction then GMM; falls back to plain GMM when
   `umap` is not installed or fitting fails.
 - `n_clusters = max(1, len(layer) // min_cluster_size)`, capped at
-  `len(layer) - 1`. All clustering is seeded (`random_state=42` default)
-  for determinism.
+  `len(layer) - 1` and at the number of **distinct** embedding rows. All
+  clustering is seeded (`random_state`) for determinism.
 - Fallback to sequential groups of `min_cluster_size` when embeddings are
-  missing, mismatched in dimension, non-finite, uniform (zero variance), or
-  any backend raises.
+  missing, mismatched in dimension, non-finite, contain fewer than two
+  distinct vectors, or any backend raises. `scikit-learn` / `numpy` are
+  imported lazily, so the API still starts without them.
+- Single-leaf input is returned unchanged by `build_tree_layers`; callers that
+  need a root for a one-chunk document (the indexing pipeline does, see
+  Section 12) add it themselves.
 
 ### Linking and termination
 
@@ -628,6 +674,13 @@ Contract update **v1.1** — added Section 12 indexing upload endpoint.
 
 Contract update **v1.2** — added Section 13 recursive summarization engine
 and prompt template.
+
+Contract update **v1.3** — Section 12 processing flow now describes the
+token-based chunker and the rewired builder (delegates to
+`RecursiveSummarizer`, document-scoped node IDs, root summary for
+single-chunk documents, leaf provenance preserved). Tunables are now
+named constants in `indexing/config.py`. No wire-format change: the
+`POST /index` request and response shapes are unchanged.
 
 ---
 
