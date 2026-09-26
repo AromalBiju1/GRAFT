@@ -34,7 +34,6 @@ document tree.
       }
     }
 
-<<<<<<< HEAD
 ### Ingestion chunks (Issue #13)
 
 Call `indexing.ingest.ingest_document(filepath, document_id="doc_001")`
@@ -101,17 +100,6 @@ The `to_dict()` tree-store representation is:
       "child_ids": [],
       "metadata": {
         "document_id": "doc_001",
-=======
-### Tree Node
-
-    {
-      "node_id": "node_001",
-      "document_id": "doc_001",
-      "level": 0,
-      "text": "Chunk or summary text...",
-      "parent_id": null,
-      "metadata": {
->>>>>>> origin/main
         "source": "example.pdf",
         "page": 1
       }
@@ -120,7 +108,6 @@ The `to_dict()` tree-store representation is:
 | Field | Type | Description |
 |---|---|---|
 | `node_id` | string | Unique tree node identifier |
-<<<<<<< HEAD
 | `level` | integer | Tree level; chunks are level 0, summaries use higher levels |
 | `text` | string | Text represented by the node |
 | `embedding` | list[float]/null | Optional precomputed embedding; defaults to `None`, excluded from `to_dict()` |
@@ -136,24 +123,13 @@ The `is_leaf` property is true when `level == 0` or `child_ids` is empty.
 `to_dict()` returns exactly `node_id`, `text`, `level`, `parent_id`,
 `child_ids`, and `metadata`. Embedding generation, clustering, summarization,
 and persistence are outside this data structure's responsibilities.
-=======
-| `document_id` | string | Source document identifier |
-| `level` | integer | Tree depth/level |
-| `text` | string | Text represented by the node |
-| `parent_id` | string/null | Parent node identifier |
-| `metadata` | object | Source and processing metadata |
->>>>>>> origin/main
 
 ---
 
 ## 3. Indexing Pipeline → Vector Store
 
-<<<<<<< HEAD
 The indexing pipeline supplies precomputed embeddings for searchable document
 chunks and higher-level summary nodes.
-=======
-The indexing pipeline creates embeddings for searchable document chunks.
->>>>>>> origin/main
 
 ### Input
 
@@ -181,7 +157,6 @@ The indexing pipeline creates embeddings for searchable document chunks.
 The vector store should store the embedding together with its associated
 metadata and return matching chunks and relevance scores during retrieval.
 
-<<<<<<< HEAD
 ### Persisting TreeNode objects
 
 `indexing.store.persist_tree_nodes(nodes, vector_store)` persists existing
@@ -223,8 +198,6 @@ summaries = vector_store.query([1.0, 0.0], n_results=5, filters={"level": 1})
 Query embeddings must match the stored embedding dimensions. Results contain
 `chunk_id`, `text`, `distance`, `score`, and `metadata`.
 
-=======
->>>>>>> origin/main
 ---
 
 ## 4. Router → Retrieval
@@ -453,7 +426,6 @@ Suggested error codes:
 
 ---
 
-<<<<<<< HEAD
 ## 12. Indexing API → Vector Store (File Upload)
 
 File-based ingestion endpoint for the RAPTOR tree pipeline.
@@ -690,9 +662,6 @@ for child_id in root.child_ids:
 ---
 
 ## 14. Contract Version
-=======
-## 12. Contract Version
->>>>>>> origin/main
 
 Initial contract version: **v1**
 
@@ -701,7 +670,6 @@ communicated to dependent components before merging.
 
 Optional fields may be added without breaking existing consumers.
 
-<<<<<<< HEAD
 Contract update **v1.1** — added Section 12 indexing upload endpoint.
 
 Contract update **v1.2** — added Section 13 recursive summarization engine
@@ -717,11 +685,6 @@ named constants in `indexing/config.py`. No wire-format change: the
 ---
 
 ## 15. Overall Data Flow
-=======
----
-
-## 13. Overall Data Flow
->>>>>>> origin/main
 
     Document
        |
@@ -747,8 +710,4 @@ named constants in `indexing/config.py`. No wire-format change: the
                               API
                                |
                                v
-<<<<<<< HEAD
                            Frontend
-=======
-                           Frontend
->>>>>>> origin/main
