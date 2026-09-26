@@ -221,8 +221,13 @@ __marimo__/
 
 # Local ChromaDB persistence
 .graft/
+<<<<<<< HEAD
 
 # Frontend dependencies and build output
 node_modules/
 frontend/dist/
 db/graft_logs.db
+=======
+db/graft_logs.db
+.graft_logs.db
+>>>>>>> origin/main
