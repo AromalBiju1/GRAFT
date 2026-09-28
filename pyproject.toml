@@ -60,6 +60,9 @@ packages = ["graft", "vector_store", "db"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-ra -q"
+markers = [
+  "integration: end-to-end tests that need the real sentence-transformers model (skipped when unavailable)",
+]
 
 [tool.ruff]
 line-length = 100

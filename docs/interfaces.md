@@ -219,11 +219,71 @@ tree.
 | `query` | string | User query |
 | `retrieval_depth` | integer | Maximum retrieval depth |
 
+### Complexity → depth mapping
+
+`graft.router.route` maps the classified complexity to a retrieval depth. This
+is the core gating contract — a simple query must stay at the leaves.
+
+| Complexity | `retrieval_depth` | Meaning |
+|---|---|---|
+| `simple` | 0 | Leaf chunks only |
+| `moderate` | 1 | Leaves + first summary layer |
+| `complex` | 2 | Leaves + all summary layers up to the root |
+
+The mapping is exported as `graft.router.COMPLEXITY_TO_DEPTH`. A
+`retrieval_depth_override` keyword (or the request field) forces a depth for
+ablation without changing classification.
+
+Thresholds live in `graft/config.py` as `router_threshold_simple` (0.35) and
+`router_threshold_complex` (0.65); the score is `graft.router.complexity_score`
+and the signal weights are named constants in the same module.
+
 ---
 
 ## 5. Retrieval → Router
 
 The retrieval component returns relevant document chunks to the router.
+
+### Depth semantics
+
+`retrieval_depth` is the **deepest** level to consider, not the only level.
+`graft.retrieval.retrieve` queries the requested level first, then walks
+progressively shallower levels down to the leaves, merges the hits, dedupes by
+`chunk_id`, and returns the top `n_results` ordered by descending score.
+
+Restricting to a single exact level returned nothing whenever a document's
+tree lacked that level — a one-chunk document only has levels 0 and 1, so a
+depth-2 query found zero rows and answered "No context provided." Level 0
+remains the floor, so a `simple` query's retrieval is still genuinely shallow.
+
+Depths above `graft.retrieval.MAX_RETRIEVAL_DEPTH` (2) are clamped, as are
+negative depths (clamped to 0).
+
+### Filters
+
+Additional equality filters are combined with the level filter using Chroma's
+`$and` operator. A flat merge such as `{"document_id": "doc_001", "level": 1}`
+is rejected by Chroma with
+`ValueError: Expected where to have exactly one operator`.
+
+### Embeddings and collection naming
+
+Query and index embeddings come from the same entry point,
+`graft.embeddings.embed_text`, so their dimensions cannot diverge. The active
+Chroma collection is qualified by the embedder via
+`graft.embeddings.collection_name()`:
+
+| Provider | Collection name | Dimension |
+|---|---|---|
+| `stub` | `graft_tree_nodes_stub_16` | 16 |
+| `sentence-transformers` (`all-MiniLM-L6-v2`) | `graft_tree_nodes_all-minilm-l6-v2_384` | 384 |
+
+Chroma fixes an embedding dimension per collection, so switching embedder
+starts a new collection instead of raising
+`InvalidArgumentError: Collection expecting embedding with dimension of 16, got 384`.
+`GET /health` reports `embedding_provider` and `embedding_dim`; a `stub` value
+means retrieval is running on hash vectors and answers are not semantically
+meaningful.
 
 ### Response
 
@@ -682,6 +742,26 @@ single-chunk documents, leaf provenance preserved). Tunables are now
 named constants in `indexing/config.py`. No wire-format change: the
 `POST /index` request and response shapes are unchanged.
 
+Contract update **v1.4** — query-side integration. Additions and behaviour
+changes, none of which alter a wire format:
+
+- Section 4 documents the complexity → depth mapping
+  (`simple`→0, `moderate`→1, `complex`→2), which previously was inverted for
+  `simple` queries: `default_retrieval_depth` overrode the map, so simple
+  queries retrieved at depth 1.
+- Section 5 documents depth *cumulative* semantics (deepest level considered,
+  falling back to the leaves), Chroma `$and` filter composition, and
+  embedder-qualified collection naming.
+- `GET /health` gains two optional fields, `embedding_provider` and
+  `embedding_dim`.
+- `POST /index` multipart and JSON now share one tree builder, one chunker
+  (`indexing.chunker`, token-based) and one `TreeNode` type
+  (`indexing.tree_node`, re-exported as `graft.tree_store.TreeNode`). The
+  word-based chunker stub and the second `TreeNode` dataclass are removed.
+- Module activation is now hint-driven for both `moderate` and `complex`
+  queries (the tier is the gate, the query is the selector), so a `moderate`
+  query mentioning a conflict reaches contradiction detection.
+
 ---
 
 ## 15. Overall Data Flow
@@ -711,3 +791,59 @@ named constants in `indexing/config.py`. No wire-format change: the
                                |
                                v
                            Frontend
+
+
+                           
+## Embedding & Clustering (`indexing/embed_cluster.py`)
+
+Takes leaf `TreeNode` chunks, embeds them, and groups semantically similar
+chunks for recursive summarization (Issue #15).
+
+### Data shapes
+
+```python
+@dataclass
+class ClusterGroup:
+    cluster_id: int        # contiguous, starting at 0
+    node_ids: List[str]    # references to TreeNode.node_id
+
+@dataclass
+class ClusterResult:
+    clusters: List[ClusterGroup]
+    embeddings: Dict[str, List[float]]  # node_id -> embedding vector
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `ClusterGroup.cluster_id` | `int` | Unique within one `ClusterResult`; ids are contiguous from 0. |
+| `ClusterGroup.node_ids` | `List[str]` | Non-empty. Every input node appears in exactly one cluster. |
+| `ClusterResult.clusters` | `List[ClusterGroup]` | Empty list only when the input is empty. |
+| `ClusterResult.embeddings` | `Dict[str, List[float]]` | One entry per input node. 384 floats for `all-MiniLM-L6-v2` (L2-normalized). |
+
+### `EmbedClusterManager`
+
+```python
+EmbedClusterManager(
+    model_name: str = "all-MiniLM-L6-v2",
+    min_cluster_size: int = 4,
+    algorithm: str = "gmm",      # "gmm" | "kmeans"
+    random_state: int = 42,
+    batch_size: int = 32,
+    encoder: Optional[Any] = None,  # inject a custom encoder (tests)
+)
+```
+
+| Method | Input | Output | Behavior |
+|---|---|---|---|
+| `generate_embeddings(nodes)` | `List[TreeNode]` (needs `node_id`, `text`) | same nodes | Sets `node.embedding` (list of floats) on every node. |
+| `cluster_nodes(nodes)` | `List[TreeNode]` | `List[ClusterGroup]` | Embeds any node missing an embedding, then clusters. |
+| `run(nodes)` | `List[TreeNode]` | `ClusterResult` | Embedding + clustering in one pass. |
+
+### Cluster count and edge cases
+
+- `K = max(1, N // min_cluster_size)`, where `N` is the number of chunks.
+- `N < min_cluster_size` (so `K == 1`) returns a single cluster holding all nodes.
+- Empty input returns an empty result; no error is raised.
+- GMM uses diagonal covariance; if it fails to fit, it falls back to K-Means. If clustering fails entirely, all nodes go into a single cluster.
+- GMM can leave a component empty; empty clusters are dropped, so the number of returned clusters may be less than `K`.
+- A node with a missing/empty `node_id` or `text=None` raises `ValueError`.
