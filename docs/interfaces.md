@@ -711,3 +711,59 @@ named constants in `indexing/config.py`. No wire-format change: the
                                |
                                v
                            Frontend
+
+
+                           
+## Embedding & Clustering (`indexing/embed_cluster.py`)
+
+Takes leaf `TreeNode` chunks, embeds them, and groups semantically similar
+chunks for recursive summarization (Issue #15).
+
+### Data shapes
+
+```python
+@dataclass
+class ClusterGroup:
+    cluster_id: int        # contiguous, starting at 0
+    node_ids: List[str]    # references to TreeNode.node_id
+
+@dataclass
+class ClusterResult:
+    clusters: List[ClusterGroup]
+    embeddings: Dict[str, List[float]]  # node_id -> embedding vector
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `ClusterGroup.cluster_id` | `int` | Unique within one `ClusterResult`; ids are contiguous from 0. |
+| `ClusterGroup.node_ids` | `List[str]` | Non-empty. Every input node appears in exactly one cluster. |
+| `ClusterResult.clusters` | `List[ClusterGroup]` | Empty list only when the input is empty. |
+| `ClusterResult.embeddings` | `Dict[str, List[float]]` | One entry per input node. 384 floats for `all-MiniLM-L6-v2` (L2-normalized). |
+
+### `EmbedClusterManager`
+
+```python
+EmbedClusterManager(
+    model_name: str = "all-MiniLM-L6-v2",
+    min_cluster_size: int = 4,
+    algorithm: str = "gmm",      # "gmm" | "kmeans"
+    random_state: int = 42,
+    batch_size: int = 32,
+    encoder: Optional[Any] = None,  # inject a custom encoder (tests)
+)
+```
+
+| Method | Input | Output | Behavior |
+|---|---|---|---|
+| `generate_embeddings(nodes)` | `List[TreeNode]` (needs `node_id`, `text`) | same nodes | Sets `node.embedding` (list of floats) on every node. |
+| `cluster_nodes(nodes)` | `List[TreeNode]` | `List[ClusterGroup]` | Embeds any node missing an embedding, then clusters. |
+| `run(nodes)` | `List[TreeNode]` | `ClusterResult` | Embedding + clustering in one pass. |
+
+### Cluster count and edge cases
+
+- `K = max(1, N // min_cluster_size)`, where `N` is the number of chunks.
+- `N < min_cluster_size` (so `K == 1`) returns a single cluster holding all nodes.
+- Empty input returns an empty result; no error is raised.
+- GMM uses diagonal covariance; if it fails to fit, it falls back to K-Means. If clustering fails entirely, all nodes go into a single cluster.
+- GMM can leave a component empty; empty clusters are dropped, so the number of returned clusters may be less than `K`.
+- A node with a missing/empty `node_id` or `text=None` raises `ValueError`.
