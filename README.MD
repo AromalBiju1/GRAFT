@@ -52,21 +52,27 @@ Document Corpus → Indexing Pipeline → Tree Store → Router
 ## Repository Structure
 
 ```
-graft/
-├── backend/            # FastAPI application
-├── frontend/           # React + Vite application
-├── vector_store/       # ChromaDB integration
-├── tests/              # backend and vector-store tests
-├── indexing/           # tree construction: chunking, clustering, summarization
-├── router/              # query complexity classification + activation gating
-├── modules/
-│   ├── fact_lookup/
-│   ├── multi_hop/
-│   ├── numeric_reasoning/
-│   └── contradiction_detection/
-├── generation/          # final answer synthesis
-├── baseline/            # flat "retrieve everything" RAG, for benchmarking
-├── benchmark/           # evaluation harness, metrics, test question sets
+GRAFT/
+├── graft/               # public package surface
+│   ├── api/             # FastAPI app: /health, /query, /index
+│   ├── router/          # query complexity classification + activation gating
+│   ├── retrieval/       # depth-aware retrieval over the tree
+│   ├── modules/         # fact_lookup · multi_hop · numeric_reasoning · contradiction_detection
+│   ├── generation/      # final answer synthesis
+│   ├── baseline/        # flat "retrieve everything" RAG, for benchmarking
+│   ├── benchmark/       # metric helpers and datasets
+│   ├── indexing/        # re-exports the indexing primitives below
+│   ├── tree_store/      # TreeNode contract
+│   ├── db/              # query-log shim over db/
+│   ├── embeddings.py    # sentence-transformers with a deterministic stub fallback
+│   └── config.py        # typed settings
+├── indexing/            # tree construction: chunking, clustering, summarization
+├── vector_store/        # ChromaDB integration
+├── db/                  # SQLite query logger
+├── api/                 # legacy index route registration
+├── backend/             # legacy FastAPI app
+├── frontend/            # React + Vite application
+├── tests/               # backend and vector-store tests
 └── docs/                # architecture notes, SRS, references
 ```
 
@@ -127,33 +133,6 @@ Open the local URL printed by Vite. The page should display “GRAFT” and
 database location is `.graft/chroma`; pass `persist_path` to use another location.
 
 ```python
-from indexing.vector_store import ChromaVectorStore
-
-store = ChromaVectorStore(persist_path=".graft/chroma")
-store.insert(
-    chunk_id="chunk_001",
-    document_id="doc_001",
-    text="Example leaf chunk",
-    embedding=[0.1, 0.2, 0.3],
-    metadata={"node_id": "node_001", "level": 0, "node_type": "leaf"},
-)
-
-results = store.query(
-    embedding=[0.1, 0.2, 0.3],
-    n_results=5,
-    filters={"level": 0},
-)
-```
-
-`filters` is passed to ChromaDB as its metadata `where` filter. Insertions use
-upsert behavior: inserting an existing `chunk_id` replaces that record.
-
-### Vector store
-
-`ChromaVectorStore` persists precomputed tree-node embeddings locally. Its default
-database location is `.graft/chroma`; pass `persist_path` to use another location.
-
-```python
 from vector_store import ChromaVectorStore
 
 store = ChromaVectorStore(persist_path=".graft/chroma")
@@ -175,6 +154,50 @@ results = store.query(
 `filters` is passed to ChromaDB as its metadata `where` filter. Insertions use
 upsert behavior: inserting an existing `chunk_id` replaces that record.
 
+Query and index embeddings must have the same dimension. `graft.embeddings`
+resolves the dimension once and qualifies the collection name by embedder, so
+switching between the real model and the stub selects a different collection
+rather than raising a dimension-mismatch error. `GET /health` reports which
+embedder is live.
+
+## The query pipeline
+
+`graft/` is the public surface for the query side — router, retrieval, the four
+specialist modules, generation, baseline, and the API. It is one package over
+one set of primitives: `graft.indexing` re-exports the tested `indexing.*`
+tree builder, chunker and `TreeNode` rather than reimplementing them.
+
+Start the API from the repository root:
+
+```bash
+uvicorn graft.api.main:app --reload
+```
+
+```bash
+# index a document
+curl -X POST http://127.0.0.1:8000/index \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "...", "document_id": "doc_001", "source": "example.pdf"}'
+
+# ask a question
+curl -X POST http://127.0.0.1:8000/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "Compare the two documents and explain every difference"}'
+```
+
+`/query` routes the query by complexity, retrieves at the depth that complexity
+maps to, runs only the activated specialist modules, and synthesises an answer
+with evidence:
+
+| Complexity | Retrieval depth | Modules activated |
+|---|---|---|
+| `simple` | 0 (leaves) | `fact_lookup` |
+| `moderate` | 1 (+ summaries) | `fact_lookup` plus hinted reasoning modules |
+| `complex` | 2 (+ root) | `fact_lookup` plus hinted reasoning modules |
+
+The top-level `router/`, `modules/`, `generation/` and `baseline/` packages
+re-export from `graft.*`, so existing imports keep working.
+
 ## Team
 
 | Module | Owner |
@@ -190,6 +213,12 @@ Guide: _________________
 
 🚧 In development — MVP scope: tree + router + 4 specialist modules + benchmark
 against flat RAG baseline. See `docs/scope.md` for full MVP definition and cut-line.
+
+The query pipeline (`graft.api.main:app`) runs end to end: index → route →
+retrieve → activated modules → generate, with real sentence-transformers
+embeddings and a stub fallback for offline runs. Answer *wording* is still a
+deterministic concatenation rather than an LLM call; grounding and evidence are
+in place, generation quality is not.
 
 ## References
 
