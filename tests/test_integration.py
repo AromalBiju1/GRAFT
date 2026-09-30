@@ -18,9 +18,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from graft.api import main as api_main
-from graft.config import settings
-from graft.embeddings import _load_model, active_provider, reset_model_cache
+from api import main as api_main
+from config import settings
+from embeddings import _load_model, active_provider, reset_model_cache
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SAMPLE_DOCS = REPO_ROOT / "data" / "sample_docs"
@@ -115,8 +115,8 @@ class TestBaselineComparison:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The flat baseline must not gate, or the comparison is meaningless."""
-        from graft.baseline import run_baseline
-        from graft.embeddings import embed_text
+        from baseline import run_baseline
+        from embeddings import embed_text
 
         text = SAMPLE_MD.read_text(encoding="utf-8")
         client.post("/index", json={"text": text, "document_id": "sd", "source": "sample_docs.md"})
@@ -135,8 +135,8 @@ class TestBaselineComparison:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Both systems must speak the same response shape to be comparable."""
-        from graft.baseline import run_baseline
-        from graft.embeddings import embed_text
+        from baseline import run_baseline
+        from embeddings import embed_text
 
         text = SAMPLE_MD.read_text(encoding="utf-8")
         client.post("/index", json={"text": text, "document_id": "sd2", "source": "sample_docs.md"})

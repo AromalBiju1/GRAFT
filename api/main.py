@@ -19,20 +19,20 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.schemas import EvidenceItem, HealthResponse, QueryRequest, QueryResponse
+from config import settings
 from db.logger import init_db, log_query
-from graft import __version__
-from graft.api.schemas import EvidenceItem, HealthResponse, QueryRequest, QueryResponse
-from graft.config import settings
-from graft.embeddings import active_provider, collection_name, embed_text, embedding_dim
-from graft.generation import synthesize
-from graft.indexing.pipeline import build_tree, index_document, persist_tree_nodes
-from graft.modules.contradiction_detection import ContradictionDetectionModule
-from graft.modules.fact_lookup import FactLookupModule
-from graft.modules.multi_hop import MultiHopModule
-from graft.modules.numeric_reasoning import NumericReasoningModule
-from graft.retrieval import retrieve
-from graft.router import route
+from embeddings import active_provider, collection_name, embed_text, embedding_dim
+from generation import synthesize
 from indexing.config import MAX_DOCUMENT_ID_LENGTH
+from indexing.pipeline import build_tree, index_document, persist_tree_nodes
+from modules.contradiction_detection import ContradictionDetectionModule
+from modules.fact_lookup import FactLookupModule
+from modules.multi_hop import MultiHopModule
+from modules.numeric_reasoning import NumericReasoningModule
+from retrieval import retrieve
+from router import route
+from version import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ def _embed_query_stub(query: str) -> list[float]:
     """Embed a query with the same embedder the index used.
 
     Named for backwards compatibility; it is no longer necessarily a stub. It
-    delegates to :func:`graft.embeddings.embed_text`, which falls back to the
+    delegates to :func:`embeddings.embed_text`, which falls back to the
     deterministic hash embedding when the real model is unavailable, so
     indexing and querying can never disagree on vector dimensionality.
     """
@@ -181,7 +181,7 @@ async def index_document_endpoint(request: Request) -> dict[str, Any]:
     - multipart/form-data: one or more .pdf/.docx files (fields: files, file)
 
     Both branches now run the *same* pipeline -- parse, token-based chunk,
-    embed, cluster, summarise, persist -- via :func:`graft.indexing.pipeline`.
+    embed, cluster, summarise, persist -- via :func:`indexing.pipeline`.
     They previously used different tree builders, which meant a PDF upload and
     a JSON POST produced structurally different trees in the same collection.
     """
@@ -355,7 +355,7 @@ def main() -> None:  # pragma: no cover
     import uvicorn
 
     uvicorn.run(
-        "graft.api.main:app",
+        "api.main:app",
         host=settings.api_host,
         port=settings.api_port,
         reload=settings.api_reload,

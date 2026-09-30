@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from graft.config import settings
-from graft.router import (
+from config import settings
+from router import (
     AVAILABLE_MODULES,
     COMPLEXITY_TO_DEPTH,
     RoutingDecision,

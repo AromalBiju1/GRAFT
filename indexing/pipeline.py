@@ -2,59 +2,38 @@
 
 This is the "head" of GRAFT: the single place documents are turned into a
 queryable tree. It is runnable without any external LLM call so indexing can
-be smoke-tested in CI, and it shares the real embedder from
-:mod:`graft.embeddings` with the query side so stored vectors and query
-vectors can never disagree on dimensionality.
+be smoke-tested in CI, and it shares the real embedder from :mod:`embeddings`
+with the query side so stored vectors and query vectors can never disagree on
+dimensionality.
 
-Both the tree builder and the persistence layer are the tested implementations
-in :mod:`indexing.builder` / :mod:`indexing.store`; this module is the
-orchestration, not a second copy of them.
+The tree construction and persistence are the tested implementations in
+:mod:`indexing.builder` and :mod:`indexing.store`; this module is the
+orchestration that binds them to the configured embedder and collection, not a
+second copy of them.
 """
 
 from __future__ import annotations
 
 import argparse
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from graft.config import settings
-from graft.embeddings import collection_name as default_collection_name
-from graft.embeddings import embed_text
-from graft.indexing.chunking import chunk_text
-from graft.indexing.tree import build_tree_from_chunks
-from graft.tree_store import TreeNode
+from config import settings
+from embeddings import collection_name as default_collection_name
+from embeddings import embed_text
+from indexing.builder import build_tree
+from indexing.config import (
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_MIN_CLUSTER_SIZE,
+)
+from indexing.tree_node import TreeNode
 
-__all__ = ["build_tree", "index_document", "main"]
+__all__ = ["index_document", "main", "persist_tree_nodes"]
 
-
-def build_tree(
-    text: str,
-    *,
-    document_id: str = "doc_001",
-    source: str | None = None,
-    chunk_size: int = 400,
-    chunk_overlap: int = 50,
-    cluster_size: int = 3,
-    embedding_fn: Callable[[str], Any] | None = None,
-    llm_client: Any | None = None,
-) -> list[TreeNode]:
-    """Build a document tree from raw text, without touching the vector store."""
-    chunks = chunk_text(
-        text,
-        chunk_size=chunk_size,
-        overlap=chunk_overlap,
-        document_id=document_id,
-        source=source,
-    )
-    return build_tree_from_chunks(
-        chunks,
-        cluster_size=cluster_size,
-        document_id=document_id,
-        source=source,
-        embedding_fn=embedding_fn or embed_text,
-        llm_client=llm_client,
-    )
+logger = logging.getLogger(__name__)
 
 
 def index_document(
@@ -62,6 +41,9 @@ def index_document(
     *,
     document_id: str,
     source: str | None = None,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+    cluster_size: int = DEFAULT_MIN_CLUSTER_SIZE,
     persist_path: Path | str | None = None,
     collection_name: str | None = None,
     embedding_fn: Callable[[str], Any] | None = None,
@@ -69,15 +51,18 @@ def index_document(
 ) -> list[TreeNode]:
     """Chunk, build the tree, embed nodes, and persist to Chroma.
 
-    Uses the same embedder as the query side (:func:`graft.embeddings.embed_text`)
+    Uses the same embedder as the query side (:func:`embeddings.embed_text`)
     so indexed and query vectors share a dimension.
 
     Args:
         text: raw document text.
         document_id: unique source document identifier.
         source: provenance recorded in node metadata.
+        chunk_size / chunk_overlap: ``cl100k_base`` **tokens**, not words.
+        cluster_size: minimum group size for tree clustering.
         persist_path: Chroma location; defaults to ``settings.chroma_path``.
-        collection_name: Chroma collection; defaults to ``settings.chroma_collection``.
+        collection_name: Chroma collection; defaults to the embedder-qualified
+            name from :func:`embeddings.collection_name`.
         embedding_fn: override the embedder (tests, custom models).
         llm_client: override the summariser.
 
@@ -88,7 +73,10 @@ def index_document(
         text,
         document_id=document_id,
         source=source,
-        embedding_fn=embedding_fn,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        cluster_size=cluster_size,
+        embedding_fn=embedding_fn or embed_text,
         llm_client=llm_client,
     )
     persist_tree_nodes(
@@ -125,9 +113,7 @@ def persist_tree_nodes(
         try:
             store.close()
         except Exception as exc:  # pragma: no cover - close is best effort
-            import logging
-
-            logging.getLogger(__name__).warning("Chroma close() failed: %s", exc)
+            logger.warning("Chroma close() failed: %s: %s", type(exc).__name__, exc)
 
 
 def main() -> None:  # pragma: no cover

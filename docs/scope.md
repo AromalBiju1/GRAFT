@@ -20,17 +20,17 @@ These are required for the 2026–27 final-year demo + report. Nothing in
 - Persisted tree: `TreeNode` with `node_id, document_id, level, text, parent_id, metadata, children`
 - Vector store write: `vector_store.ChromaVectorStore` at `.graft/chroma`
 
-Acceptance: `graft.indexing.pipeline.index_document` indexes the sample docs
+Acceptance: `indexing.pipeline.index_document` indexes the sample docs
 and `retrieve` returns level-filtered hits.
 
 ### 2. Router / Activation Gating
 - Complexity classifier: `simple | moderate | complex` with confidence
-- Thresholds from `graft.config.Settings` (no magic numbers inline)
+- Thresholds from `config.Settings` (no magic numbers inline)
 - Mapping: simple→depth 0 (leaf), moderate→1, complex→2
 - Module activation per query: subset of
   `fact_lookup, multi_hop, numeric_reasoning, contradiction_detection`
 
-Acceptance: `graft.router.route` is deterministic, tested, and its `route`
+Acceptance: `router.route` is deterministic, tested, and its `route`
 output drives both `retrieval` and the `activated_modules` list sent to generation.
 
 ### 3. Four Specialist Modules
@@ -44,14 +44,14 @@ All follow `docs/interfaces.md` §7 common I/O.
 | Contradiction detection | — | Flag negation-mismatch overlaps; swap to NLI later |
 
 Acceptance: each module has a direct unit test and a module-result shape
-that `graft.generation.synthesize` consumes.
+that `generation.synthesize` consumes.
 
 ### 4. Generation
 - Stub concatenation → LLM synthesis (Gemini/OpenAI/local)
 - Output: `{request_id, answer, evidence}` per interfaces §9.
 
 ### 5. Baseline (Flat RAG)
-- `graft.baseline.run_baseline` retrieves with no gating and fires all modules.
+- `baseline.run_baseline` retrieves with no gating and fires all modules.
 - Used for every benchmark run to produce an honest comparison.
 
 ### 6. Benchmark Harness

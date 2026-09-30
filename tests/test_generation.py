@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from graft.generation import synthesize
-from graft.modules.base import ModuleResult
+from generation import synthesize
+from modules.base import ModuleResult
 from tests.modules_helpers import passage
 
 REQUEST_ID = "req_001"

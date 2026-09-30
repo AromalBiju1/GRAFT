@@ -12,9 +12,10 @@ import math
 
 import pytest
 
-from graft.config import settings
-from graft.embeddings import (
+from config import settings
+from embeddings import (
     STUB_EMBEDDING_DIM,
+    _load_model,
     active_provider,
     collection_name,
     embed_text,
@@ -25,6 +26,28 @@ from graft.embeddings import (
 
 #: all-MiniLM-L6-v2 output width, per docs/interfaces.md §15.
 MINILM_DIM = 384
+
+
+def _model_available() -> bool:
+    """Probe the real model once, retrying once to ride out a cold/blip cache.
+
+    Resolved at import time and cached, so every test in this module makes the
+    *same* skip decision. Probing per-test (as a bare ``skipif`` expression
+    would) let a transient load failure silently drop three tests from a run
+    that otherwise passed, which hides lost coverage.
+    """
+    for _attempt in (1, 2):
+        reset_model_cache()
+        if _load_model() is not None:
+            return True
+    return False
+
+
+REAL_MODEL_AVAILABLE = _model_available()
+REAL_MODEL_SKIP_REASON = "sentence-transformers model unavailable (offline CI)"
+requires_real_model = pytest.mark.skipif(
+    not REAL_MODEL_AVAILABLE, reason=REAL_MODEL_SKIP_REASON
+)
 
 
 @pytest.fixture
@@ -47,10 +70,7 @@ class TestProviderSelection:
         assert active_provider() == "stub"
         assert embedding_dim() == STUB_EMBEDDING_DIM
 
-    @pytest.mark.skipif(
-        not __import__("graft.embeddings", fromlist=["_load_model"])._load_model(),
-        reason="sentence-transformers model unavailable (offline CI)",
-    )
+    @requires_real_model
     def test_real_model_yields_384_dimensions(self) -> None:
         assert active_provider() == "sentence-transformers"
         assert embedding_dim() == MINILM_DIM
@@ -76,18 +96,12 @@ class TestEmbedText:
         with pytest.raises(TypeError):
             embed_text(123)  # type: ignore[arg-type]
 
-    @pytest.mark.skipif(
-        not __import__("graft.embeddings", fromlist=["_load_model"])._load_model(),
-        reason="sentence-transformers model unavailable (offline CI)",
-    )
+    @requires_real_model
     def test_real_embedding_dimension_matches_embedding_dim(self) -> None:
         # The property that keeps Chroma inserts and queries compatible.
         assert len(embed_text("some document text")) == embedding_dim()
 
-    @pytest.mark.skipif(
-        not __import__("graft.embeddings", fromlist=["_load_model"])._load_model(),
-        reason="sentence-transformers model unavailable (offline CI)",
-    )
+    @requires_real_model
     def test_real_embeddings_are_semantically_ordered(self) -> None:
         """Similar texts must embed closer than unrelated ones.
 

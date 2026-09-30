@@ -20,8 +20,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from graft.config import settings
-from graft.embeddings import collection_name as default_collection_name
+from config import settings
+from embeddings import collection_name as default_collection_name
 from vector_store import ChromaVectorStore
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ def retrieve(
 
     Args:
         query_embedding: embedding for the user query. Must match the dimension
-            the index was built with; :mod:`graft.embeddings` guarantees this.
+            the index was built with; :mod:`embeddings` guarantees this.
         n_results: top-k.
         retrieval_depth: deepest tree level to include. ``None`` searches all
             levels. Values above :data:`MAX_RETRIEVAL_DEPTH` are clamped.

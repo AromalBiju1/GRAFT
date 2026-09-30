@@ -53,28 +53,29 @@ Document Corpus → Indexing Pipeline → Tree Store → Router
 
 ```
 GRAFT/
-├── graft/               # public package surface
-│   ├── api/             # FastAPI app: /health, /query, /index
-│   ├── router/          # query complexity classification + activation gating
-│   ├── retrieval/       # depth-aware retrieval over the tree
-│   ├── modules/         # fact_lookup · multi_hop · numeric_reasoning · contradiction_detection
-│   ├── generation/      # final answer synthesis
-│   ├── baseline/        # flat "retrieve everything" RAG, for benchmarking
-│   ├── benchmark/       # metric helpers and datasets
-│   ├── indexing/        # re-exports the indexing primitives below
-│   ├── tree_store/      # TreeNode contract
-│   ├── db/              # query-log shim over db/
-│   ├── embeddings.py    # sentence-transformers with a deterministic stub fallback
-│   └── config.py        # typed settings
+├── api/                 # FastAPI app: /health, /query, /index
+├── router/              # query complexity classification + activation gating
+├── retrieval/           # depth-aware retrieval over the tree
+├── modules/             # fact_lookup · multi_hop · numeric_reasoning · contradiction_detection
+├── generation/          # final answer synthesis
+├── baseline/            # flat "retrieve everything" RAG, for benchmarking
+├── benchmark/           # metric helpers and datasets
 ├── indexing/            # tree construction: chunking, clustering, summarization
+├── tree_store/          # TreeNode contract (re-exports indexing.tree_node)
 ├── vector_store/        # ChromaDB integration
 ├── db/                  # SQLite query logger
-├── api/                 # legacy index route registration
-├── backend/             # legacy FastAPI app
+├── backend/             # minimal legacy FastAPI app
+├── embeddings.py        # sentence-transformers with a deterministic stub fallback
+├── config.py            # typed settings
+├── version.py           # __version__
 ├── frontend/            # React + Vite application
 ├── tests/               # backend and vector-store tests
 └── docs/                # architecture notes, SRS, references
 ```
+
+There is one package per pipeline stage, at the top level. Every module named
+in `.github/copilot-instructions.md` (`indexing/`, `router/`, `modules/*`,
+`generation/`, `baseline/`) is a real implementation, not a forwarder.
 
 ## Tech Stack
 
@@ -154,7 +155,7 @@ results = store.query(
 `filters` is passed to ChromaDB as its metadata `where` filter. Insertions use
 upsert behavior: inserting an existing `chunk_id` replaces that record.
 
-Query and index embeddings must have the same dimension. `graft.embeddings`
+Query and index embeddings must have the same dimension. `embeddings`
 resolves the dimension once and qualifies the collection name by embedder, so
 switching between the real model and the stub selects a different collection
 rather than raising a dimension-mismatch error. `GET /health` reports which
@@ -162,15 +163,10 @@ embedder is live.
 
 ## The query pipeline
 
-`graft/` is the public surface for the query side — router, retrieval, the four
-specialist modules, generation, baseline, and the API. It is one package over
-one set of primitives: `graft.indexing` re-exports the tested `indexing.*`
-tree builder, chunker and `TreeNode` rather than reimplementing them.
-
 Start the API from the repository root:
 
 ```bash
-uvicorn graft.api.main:app --reload
+uvicorn api.main:app --reload
 ```
 
 ```bash
@@ -196,7 +192,7 @@ with evidence:
 | `complex` | 2 (+ root) | `fact_lookup` plus hinted reasoning modules |
 
 The top-level `router/`, `modules/`, `generation/` and `baseline/` packages
-re-export from `graft.*`, so existing imports keep working.
+re-export from the flat packages, so existing imports keep working.
 
 ## Team
 
@@ -214,7 +210,7 @@ Guide: _________________
 🚧 In development — MVP scope: tree + router + 4 specialist modules + benchmark
 against flat RAG baseline. See `docs/scope.md` for full MVP definition and cut-line.
 
-The query pipeline (`graft.api.main:app`) runs end to end: index → route →
+The query pipeline (`api.main:app`) runs end to end: index → route →
 retrieve → activated modules → generate, with real sentence-transformers
 embeddings and a stub fallback for offline runs. Answer *wording* is still a
 deterministic concatenation rather than an LLM call; grounding and evidence are

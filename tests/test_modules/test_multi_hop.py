@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from graft.modules.multi_hop import MultiHopModule
+from modules.multi_hop import MultiHopModule
 from tests.modules_helpers import assert_common_output, passage
 
 REQUEST_ID = "req_001"
