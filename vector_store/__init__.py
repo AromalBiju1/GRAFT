@@ -1,6 +1,6 @@
 """Vector-store shim re-exporting ChromaVectorStore from indexing.
 
-This alias exists so graft.indexing.pipeline and graft.retrieval can import
+This alias exists so indexing.pipeline and retrieval can import
 `from vector_store import ChromaVectorStore` while the canonical implementation
 lives in indexing.vector_store.chroma_store.
 """

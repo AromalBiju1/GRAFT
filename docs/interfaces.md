@@ -221,7 +221,7 @@ tree.
 
 ### Complexity → depth mapping
 
-`graft.router.route` maps the classified complexity to a retrieval depth. This
+`router.route` maps the classified complexity to a retrieval depth. This
 is the core gating contract — a simple query must stay at the leaves.
 
 | Complexity | `retrieval_depth` | Meaning |
@@ -230,12 +230,12 @@ is the core gating contract — a simple query must stay at the leaves.
 | `moderate` | 1 | Leaves + first summary layer |
 | `complex` | 2 | Leaves + all summary layers up to the root |
 
-The mapping is exported as `graft.router.COMPLEXITY_TO_DEPTH`. A
+The mapping is exported as `router.COMPLEXITY_TO_DEPTH`. A
 `retrieval_depth_override` keyword (or the request field) forces a depth for
 ablation without changing classification.
 
 Thresholds live in `graft/config.py` as `router_threshold_simple` (0.35) and
-`router_threshold_complex` (0.65); the score is `graft.router.complexity_score`
+`router_threshold_complex` (0.65); the score is `router.complexity_score`
 and the signal weights are named constants in the same module.
 
 ---
@@ -247,7 +247,7 @@ The retrieval component returns relevant document chunks to the router.
 ### Depth semantics
 
 `retrieval_depth` is the **deepest** level to consider, not the only level.
-`graft.retrieval.retrieve` queries the requested level first, then walks
+`retrieval.retrieve` queries the requested level first, then walks
 progressively shallower levels down to the leaves, merges the hits, dedupes by
 `chunk_id`, and returns the top `n_results` ordered by descending score.
 
@@ -256,7 +256,7 @@ tree lacked that level — a one-chunk document only has levels 0 and 1, so a
 depth-2 query found zero rows and answered "No context provided." Level 0
 remains the floor, so a `simple` query's retrieval is still genuinely shallow.
 
-Depths above `graft.retrieval.MAX_RETRIEVAL_DEPTH` (2) are clamped, as are
+Depths above `retrieval.MAX_RETRIEVAL_DEPTH` (2) are clamped, as are
 negative depths (clamped to 0).
 
 ### Filters
@@ -269,9 +269,9 @@ is rejected by Chroma with
 ### Embeddings and collection naming
 
 Query and index embeddings come from the same entry point,
-`graft.embeddings.embed_text`, so their dimensions cannot diverge. The active
+`embeddings.embed_text`, so their dimensions cannot diverge. The active
 Chroma collection is qualified by the embedder via
-`graft.embeddings.collection_name()`:
+`embeddings.collection_name()`:
 
 | Provider | Collection name | Dimension |
 |---|---|---|
@@ -756,11 +756,20 @@ changes, none of which alter a wire format:
   `embedding_dim`.
 - `POST /index` multipart and JSON now share one tree builder, one chunker
   (`indexing.chunker`, token-based) and one `TreeNode` type
-  (`indexing.tree_node`, re-exported as `graft.tree_store.TreeNode`). The
+  (`indexing.tree_node`, re-exported as `tree_store.TreeNode`). The
   word-based chunker stub and the second `TreeNode` dataclass are removed.
 - Module activation is now hint-driven for both `moderate` and `complex`
   queries (the tier is the gate, the query is the selector), so a `moderate`
   query mentioning a conflict reaches contradiction detection.
+
+Contract update **v1.5** — flattened the package layout. Every module is a
+top-level package (`router`, `retrieval`, `modules/*`, `generation`,
+`baseline`, `indexing`, `tree_store`, `db`, `vector_store`, `api`, `backend`,
+`benchmark`) with root modules `config.py`, `embeddings.py` and `version.py`.
+The interim `graft.*` namespace is removed; `graft.X` paths become `X`.
+No behaviour, wire format or field changed — the move is import-path only, and
+each destination module already held the real implementation (the `graft.*`
+counterparts were forwarders). The PyPI distribution keeps the name `graft`.
 
 ---
 

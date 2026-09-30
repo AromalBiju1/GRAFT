@@ -36,7 +36,7 @@ except Exception:
     backend_app = None  # type: ignore
 
 try:
-    from graft.api.main import app as graft_app
+    from api.main import app as graft_app
 except Exception:
     graft_app = None  # type: ignore
 
@@ -267,7 +267,7 @@ class IndexingEndpointSmokeTests(unittest.TestCase):
             with patch("api.routes.indexing.DEFAULT_PERSIST_PATH", Path(tmpdir)), patch(
                 "api.routes.indexing.ChromaVectorStore", lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(persist_path=tmpdir, collection_name=collection_name)
             ):
-                # Also patch graft.api.main settings if needed (for graft app path)
+                # Also patch api.main settings if needed (for graft app path)
                 client = self._client_for_app(backend_app)
                 resp = client.post(
                     "/index",
@@ -368,12 +368,12 @@ class IndexingEndpointSmokeTests(unittest.TestCase):
     def test_graft_api_multipart_if_available(self) -> None:
         """If graft API is used, its multipart branch should also work."""
         if graft_app is None:
-            self.skipTest("graft.api not importable")
+            self.skipTest("api.main not importable")
         files_to_upload = self._pick_files_for_upload(1)
         filename, content, mime = files_to_upload[0]
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("graft.config.settings.chroma_path", Path(tmpdir)):
-                # Need to also patch the store class used inside graft.api.main
+            with patch("config.settings.chroma_path", Path(tmpdir)):
+                # Need to also patch the store class used inside api.main
                 # The module imports ChromaVectorStore via indexing.vector_store inside handler
                 with patch("indexing.vector_store.ChromaVectorStore", lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(persist_path=tmpdir, collection_name=collection_name)):
                     client = self._client_for_app(graft_app)

@@ -26,7 +26,7 @@ import re
 import threading
 from typing import Any
 
-from graft.config import settings
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,7 @@ def collection_name(base: str | None = None) -> str:
 
     An explicit ``collection_name=`` argument still wins wherever one is passed.
     """
-    from graft.config import settings
+    from config import settings
 
     base = base or settings.chroma_collection
     if active_provider() == "stub":

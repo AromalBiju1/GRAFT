@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from graft.modules.fact_lookup import FactLookupModule
+from modules.fact_lookup import FactLookupModule
 from tests.modules_helpers import assert_common_output, passage
 
 REQUEST_ID = "req_001"

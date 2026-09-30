@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from graft.modules.contradiction_detection import ContradictionDetectionModule
+from modules.contradiction_detection import ContradictionDetectionModule
 from tests.modules_helpers import assert_common_output, passage
 
 REQUEST_ID = "req_001"

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from graft.modules.base import ModuleResult
+from modules.base import ModuleResult
 
 #: Retrieval results are dicts per docs/interfaces.md section 5.
 PASSAGE_TEMPLATE: dict[str, Any] = {

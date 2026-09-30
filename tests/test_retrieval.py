@@ -13,10 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from graft.config import settings
-from graft.embeddings import embed_text, reset_model_cache
-from graft.indexing.pipeline import index_document
-from graft.retrieval import MAX_RETRIEVAL_DEPTH, retrieve
+from config import settings
+from embeddings import embed_text, reset_model_cache
+from indexing.pipeline import index_document
+from retrieval import MAX_RETRIEVAL_DEPTH, retrieve
 
 DOC_TEXT = (
     "The transmission control protocol provides reliable ordered delivery. "

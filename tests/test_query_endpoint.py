@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from graft.api import main as api_main
-from graft.config import settings
+from api import main as api_main
+from config import settings
 
 SAMPLE_TEXT = (
     "GRAFT routes queries by complexity before retrieval. "
@@ -31,7 +31,7 @@ SAMPLE_TEXT = (
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setattr(settings, "embedding_provider", "stub")
     monkeypatch.setattr(settings, "chroma_path", tmp_path / "chroma")
-    from graft.embeddings import reset_model_cache
+    from embeddings import reset_model_cache
 
     reset_model_cache()
     yield TestClient(api_main.app)
