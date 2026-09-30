@@ -97,10 +97,10 @@ class TestClassify:
             assert label in ("simple", "moderate", "complex")
             assert 0.0 <= confidence <= 1.0
 
-    @pytest.mark.parametrize("bad", ["", "   ", "\n\t"])
-    def test_empty_query_raises(self, bad: str) -> None:
-        with pytest.raises(ValueError):
-            classify(bad)
+        @pytest.mark.parametrize("bad", ["", "   ", "\n\t"])
+        def test_route_empty_query_raises(self, bad: str) -> None:
+            with pytest.raises(ValueError):
+                route(bad)
 
     def test_non_string_query_raises(self) -> None:
         with pytest.raises(ValueError):
@@ -164,6 +164,8 @@ class TestModuleActivation:
             "disagree",
             "outdated",
             "superseded",
+            "versus", 
+            "vs",
         ],
     )
     def test_activates_contradiction_detection_on_conflict_keywords(self, keyword: str) -> None:
@@ -196,6 +198,11 @@ class TestModuleActivation:
             names = route(query).activated_modules
             assert len(names) == len(set(names))
 
+    def test_no_keywords_means_no_contradiction_or_numeric_modules(self) -> None:
+        modules = route("Summarize the document").activated_modules
+        assert "contradiction_detection" not in modules
+        assert "numeric_reasoning" not in modules
+
 
 class TestRoutingDecision:
     def test_to_dict_returns_exactly_the_contract_keys(self) -> None:
@@ -221,3 +228,46 @@ class TestRoutingDecision:
         )
         assert decision.complexity == "simple"
         assert decision.to_dict()["retrieval_depth"] == 0
+class TestThresholds:
+    @pytest.fixture
+    def thresholds(self) -> tuple[float, float]:
+        return settings.router_threshold_simple, settings.router_threshold_complex
+
+    @staticmethod
+    def _at(monkeypatch: pytest.MonkeyPatch, score: float) -> tuple[str, float]:
+        monkeypatch.setattr("router.complexity_score", lambda _q: score)
+        return classify("anything")
+
+    def test_simple_moderate_boundary(self, monkeypatch, thresholds) -> None:
+        lo, _ = thresholds
+        assert self._at(monkeypatch, lo - 1e-6)[0] == "simple"
+        assert self._at(monkeypatch, lo + 1e-6)[0] == "moderate"
+
+    def test_moderate_complex_boundary(self, monkeypatch, thresholds) -> None:
+        _, hi = thresholds
+        assert self._at(monkeypatch, hi - 1e-6)[0] == "moderate"
+        assert self._at(monkeypatch, hi + 1e-6)[0] == "complex"
+
+    def test_score_exactly_at_thresholds(self, monkeypatch, thresholds) -> None:
+    # Boundary semantics: the simple threshold is exclusive (score == lo is
+    # moderate) and the complex threshold is also exclusive (score == hi is
+    # still moderate). Complex requires score strictly above hi.
+        lo, hi = thresholds
+        assert self._at(monkeypatch, lo)[0] == "moderate"
+        assert self._at(monkeypatch, hi)[0] == "moderate"
+
+    def test_moderate_confidence_peaks_between_thresholds(self, monkeypatch, thresholds) -> None:
+        lo, hi = thresholds
+        step = (hi - lo) / 10
+        _, near_lo = self._at(monkeypatch, lo + step)
+        _, centre = self._at(monkeypatch, (lo + hi) / 2)
+        _, near_hi = self._at(monkeypatch, hi - step)
+        assert centre > near_lo
+        assert centre > near_hi
+
+    def test_complex_confidence_rises_away_from_upper_threshold(self, monkeypatch, thresholds) -> None:
+        _, hi = thresholds
+        room = 1.0 - hi
+        _, near = self._at(monkeypatch, hi + room * 0.1)
+        _, far = self._at(monkeypatch, hi + room * 0.5)
+        assert far > near
