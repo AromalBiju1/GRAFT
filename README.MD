@@ -108,14 +108,28 @@ Copy-Item .env.example .env
 On macOS or Linux, activate it with `source venv/bin/activate` and copy the
 environment template with `cp .env.example .env`.
 
-Start the backend from the repository root:
+Start the API from the repository root:
 
 ```bash
-uvicorn backend.app.main:app --reload
+uvicorn api.main:app --reload
 ```
 
 Verify it by opening `http://127.0.0.1:8000/health`. The response should be
-`{"status":"ok"}`.
+`{"status":"ok"}`, plus the live embedder and its dimension:
+
+```json
+{
+  "status": "ok",
+  "version": "0.1.0",
+  "chroma_path": ".graft/chroma",
+  "collection": "graft_tree_nodes_all-minilm-l6-v2_384",
+  "embedding_provider": "sentence-transformers",
+  "embedding_dim": 384
+}
+```
+
+`backend.app.main:app` is a smaller, legacy app that only serves `/health` and
+the `/index` upload route. Use `api.main:app` for anything that queries.
 
 In another terminal, install and start the frontend:
 
@@ -191,30 +205,54 @@ with evidence:
 | `moderate` | 1 (+ summaries) | `fact_lookup` plus hinted reasoning modules |
 | `complex` | 2 (+ root) | `fact_lookup` plus hinted reasoning modules |
 
-The top-level `router/`, `modules/`, `generation/` and `baseline/` packages
-re-export from the flat packages, so existing imports keep working.
+`config.py` holds every tunable (paths, thresholds, embedder choice), and
+`embeddings.py` is the single embedder shared by indexing and querying, so
+stored vectors and query vectors can never disagree on dimension.
 
 ## Team
 
-| Module | Owner |
-|---|---|
-| Indexing / tree construction | |
-| Router / activation gating | |
-| Specialist modules | Abhinav Suresh · Anugrah M Nair · Aromal Biju · S Vishnu Narayan |
-| Benchmarking harness | |
-
-Guide: _________________
+- Abhinav Suresh
+- Anugrah M Nair
+- Aromal Biju
+- S Vishnu Narayan
 
 ## Status
 
-🚧 In development — MVP scope: tree + router + 4 specialist modules + benchmark
-against flat RAG baseline. See `docs/scope.md` for full MVP definition and cut-line.
+🚧 In development. See `docs/scope.md` for the full MVP definition and cut-line.
 
-The query pipeline (`api.main:app`) runs end to end: index → route →
-retrieve → activated modules → generate, with real sentence-transformers
-embeddings and a stub fallback for offline runs. Answer *wording* is still a
-deterministic concatenation rather than an LLM call; grounding and evidence are
-in place, generation quality is not.
+The pipeline runs end to end today: `uvicorn api.main:app`, then
+`POST /index` to build a document tree and `POST /query` to route, retrieve,
+run the activated modules, and return a grounded answer with evidence.
+
+**Working**
+
+| Area | State |
+|---|---|
+| Indexing pipeline | PDF/DOCX ingestion, token-based chunking, GMM clustering, recursive summarisation, Chroma persistence |
+| Tree store | Strict tree, bidirectional parent/child links, document-scoped node IDs, root summary even for single-chunk docs |
+| Router | `simple`/`moderate`/`complex` → retrieval depth 0/1/2, with hint-driven module activation |
+| Retrieval | Depth-aware search that falls back to the leaves when a document's tree lacks the requested level |
+| 4 specialist modules | Fact lookup · multi-hop · numeric/table · contradiction detection, all sharing the §7 output contract |
+| Generation | Deterministic, grounded synthesis with deduped, ordered evidence |
+| Baseline | Flat "retrieve everything" RAG, ungated, for comparison |
+| Embeddings | `all-MiniLM-L6-v2` (384-dim) with a deterministic stub fallback for offline runs |
+| Tests | 245 passing, covering router, all four modules, generation, embeddings, retrieval, the `/query` endpoint, and index→query end to end |
+
+**Not done yet**
+
+| Area | State |
+|---|---|
+| Generation | Concatenates module output — no LLM call, so answers are grounded but not well-worded |
+| Contradiction detection | Keyword-overlap + negation heuristic; high false-positive rate, needs an NLI model |
+| Benchmarking | Metric helpers only — no dataset and no runner CLI, so no numbers yet |
+| CI | No GitHub Actions workflow; tests are run manually |
+| Frontend | Scaffold only (`App.jsx` renders a heading) — not wired to `/query` |
+| Analytics | Query logger writes to SQLite, but no endpoint reads it back |
+
+The honest summary: the retrieval and gating machinery is solid and tested,
+but answer quality depends on work that hasn't been done, and the headline
+claim — that GRAFT beats flat RAG — is unmeasured until the benchmark harness
+lands.
 
 ## References
 
