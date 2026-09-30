@@ -234,7 +234,7 @@ The mapping is exported as `router.COMPLEXITY_TO_DEPTH`. A
 `retrieval_depth_override` keyword (or the request field) forces a depth for
 ablation without changing classification.
 
-Thresholds live in `graft/config.py` as `router_threshold_simple` (0.35) and
+Thresholds live in `config.py` as `router_threshold_simple` (0.35) and
 `router_threshold_complex` (0.65); the score is `router.complexity_score`
 and the signal weights are named constants in the same module.
 
@@ -492,9 +492,9 @@ File-based ingestion endpoint for the RAPTOR tree pipeline.
 
 ### Route
 
-`POST /index` (multipart/form-data) — `api/routes/indexing.py`, registered in `backend/app/main.py` and `graft/api/main.py`.
+`POST /index` (multipart/form-data) — `api/routes/indexing.py`, registered in `backend/app/main.py` and `api/main.py`.
 
-Alternative JSON route (legacy): `POST /index` with `application/json` `{"text": "...", "document_id": "...", "source": "..."}` remains on `graft/api/main.py` for backwards compatibility.
+Alternative JSON route (legacy): `POST /index` with `application/json` `{"text": "...", "document_id": "...", "source": "..."}` remains on `api/main.py` for backwards compatibility.
 
 ### Multipart Request
 
@@ -526,7 +526,8 @@ Validation:
    offline `_stub_llm_client`, so CI runs without network access.
 5. `indexing/store.py` (`persist_tree_nodes`) upserts every `TreeNode` (with
    `embedding`, `parent_id`, `child_ids`, `metadata["document_id"]`) into
-   `ChromaVectorStore` (`.graft/chroma`, collection `graft_tree_nodes`) via
+   `ChromaVectorStore` (`.graft/chroma`, collection embedder-qualified per
+   section 5, e.g. `graft_tree_nodes_all-minilm-l6-v2_384`) via
    `insert`/`upsert`.
 
 ### Chunk schema accepted by the builder
@@ -586,7 +587,7 @@ own `document_id` wins over the caller's fallback). This is what backs the
 
 Every leaf node produced has a non-empty `embedding`; parent-child links satisfy `child.parent_id == parent.node_id`, `parent.child_ids` contains the child, and `parent.level == child.level + 1`. All nodes are persisted and queryable via `level` metadata filter.
 
-### JSON Request (legacy, graft/api)
+### JSON Request (legacy, api)
 
 ```json
 {

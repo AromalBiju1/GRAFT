@@ -25,7 +25,7 @@ cp .env.example .env
 # The stubs run without any key.
 ```
 
-Key vars (see `graft/config.py`):
+Key vars (see `config.py`):
 
 - `GRAFT_CHROMA_PATH` — default `.graft/chroma`
 - `GRAFT_DB_PATH` — default `db/graft_logs.db`
@@ -80,7 +80,7 @@ otherwise falls back to `http://127.0.0.1:8000/query`.
 
 `data/sample_docs/` contains RFCs, Transformer papers, and the NIST OSCAL
 catalog with notes in `data/sample_docs/sample_docs.md`. Use them to seed the
-index and test contradiction / numeric cases from `graft/benchmark/datasets.py`.
+index and test contradiction / numeric cases from `benchmark/datasets.py`.
 
 ## 7. Lint / Typecheck
 
