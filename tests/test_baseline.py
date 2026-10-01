@@ -57,6 +57,7 @@ class FakeRetriever:
     """Records calls and returns canned §5-shaped passages."""
  
     def __init__(self) -> None:
+        """Initialize an empty call log and canned factual and revenue passages."""
         self.calls: list[dict[str, Any]] = []
         self.passages = [
             passage("doc_001_chunk_0000", "Paris is the capital of France.", 0.95),
@@ -65,12 +66,14 @@ class FakeRetriever:
         ]
  
     def __call__(self, query_embedding: list[float], **kwargs: Any) -> list[dict[str, Any]]:
+        """Record retrieval arguments and return copies of the canned passages."""
         self.calls.append({"query_embedding": query_embedding, **kwargs})
         return [dict(p) for p in self.passages]
  
  
 @pytest.fixture
 def retriever(monkeypatch: pytest.MonkeyPatch) -> FakeRetriever:
+    """Replace baseline retrieval with a fake that records calls for assertions."""
     fake = FakeRetriever()
     monkeypatch.setattr(baseline, "retrieve", fake)
     return fake
@@ -88,16 +91,19 @@ class TestBaselineUnit:
         assert {m["module"] for m in out["module_results"]} == EXPECTED_MODULES
  
     def test_simple_query_still_fires_all_modules(self, retriever: FakeRetriever) -> None:
+        """Verify even a greeting activates every baseline module."""
         out = baseline.run_baseline("req_simple", "Hi", fake_embed("Hi"))
  
         assert {m["module"] for m in out["module_results"]} == EXPECTED_MODULES
  
     def test_mode_is_baseline_flat(self, retriever: FakeRetriever) -> None:
+        """Verify the response identifies the flat baseline execution mode."""
         out = baseline.run_baseline("req_1", SIMPLE_QUERY, fake_embed(SIMPLE_QUERY))
  
         assert out["mode"] == "baseline_flat"
  
     def test_output_includes_module_results_and_retrieval(self, retriever: FakeRetriever) -> None:
+        """Verify output contains four serialized module results and retrieved passages."""
         out = baseline.run_baseline("req_1", SIMPLE_QUERY, fake_embed(SIMPLE_QUERY))
  
         assert isinstance(out["module_results"], list)
@@ -106,6 +112,7 @@ class TestBaselineUnit:
         assert out["retrieval"] == retriever.passages
  
     def test_output_has_request_id_answer_and_evidence(self, retriever: FakeRetriever) -> None:
+        """Verify the request ID is preserved and answer and evidence are populated."""
         out = baseline.run_baseline("req_42", SIMPLE_QUERY, fake_embed(SIMPLE_QUERY))
  
         assert out["request_id"] == "req_42"
@@ -122,6 +129,7 @@ class TestBaselineUnit:
         seen: list[tuple[Any, ...]] = []
  
         def spy(request_id: str, query: str, context: list, module_results: list) -> dict:
+            """Record synthesis inputs and delegate to the shared implementation."""
             seen.append((request_id, query, context, module_results))
             return generation.synthesize(request_id, query, context, module_results)
  
@@ -163,6 +171,7 @@ class TestBaselineUnit:
     def test_empty_retrieval_still_fires_all_modules(
         self, retriever: FakeRetriever
     ) -> None:
+        """Verify empty retrieval still activates all modules and produces an answer."""
         retriever.passages = []
         out = baseline.run_baseline("req_1", SIMPLE_QUERY, fake_embed(SIMPLE_QUERY))
  
@@ -172,6 +181,7 @@ class TestBaselineUnit:
 
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    """Create an API client with temporary storage, skipping if the real model is absent."""
     monkeypatch.setattr(settings, "chroma_path", tmp_path / "chroma")
     reset_model_cache()
     if active_provider() != "sentence-transformers":  # pragma: no cover - offline
@@ -181,6 +191,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 @pytest.fixture
 def indexed(client: TestClient) -> TestClient:
+    """Index the sample Markdown collection and return the prepared API client."""
     text = SAMPLE_MD.read_text(encoding="utf-8")
     response = client.post(
         "/index", json={"text": text, "document_id": "sample_docs", "source": "sample_docs.md"}
@@ -191,16 +202,19 @@ def indexed(client: TestClient) -> TestClient:
 
 class TestRealEmbedder:
     def test_real_model_is_used(self, client: TestClient) -> None:
+        """Verify health reports sentence-transformers embeddings with 384 dimensions."""
         health = client.get("/health").json()
         assert health["embedding_provider"] == "sentence-transformers"
         assert health["embedding_dim"] == 384
 
     def test_model_loads_without_error(self) -> None:
+        """Verify loading the embedding model returns a model instance."""
         assert _load_model() is not None
 
 
 class TestIndexThenQuery:
     def test_simple_factual_query_returns_grounded_evidence(self, indexed: TestClient) -> None:
+        """Verify a simple query uses depth zero and returns evidence from the sample."""
         payload = indexed.post(
             "/query", json={"query": "What documents are in the collection?"}
         ).json()
@@ -216,11 +230,13 @@ class TestIndexThenQuery:
         assert "1705.pdf" in joined or "1706.pdf" in joined
 
     def test_answer_is_grounded_in_retrieved_context(self, indexed: TestClient) -> None:
+        """Verify the answer and top evidence passage share their opening text."""
         payload = indexed.post("/query", json={"query": "Which documents are listed?"}).json()
         top = payload["evidence"][0].get("text") or ""
         assert payload["answer"][:60] in top or top[:60] in payload["answer"]
 
     def test_complex_comparison_query_activates_multiple_modules(self, indexed: TestClient) -> None:
+        """Verify a complex comparison activates multiple modules and returns evidence."""
         query = "Compare the documents and explain every difference in detail"
         payload = indexed.post("/query", json={"query": query}).json()
         assert payload["routing"]["complexity"] == "complex"
@@ -240,12 +256,14 @@ class TestIndexThenQuery:
         assert "1706" in top_text or "Transformer" in top_text
 
     def test_retrieval_depth_2_still_returns_evidence(self, indexed: TestClient) -> None:
+        """Verify a depth-two query still retrieves evidence from the indexed collection."""
         payload = indexed.post(
             "/query", json={"query": "What documents are in the collection?", "retrieval_depth": 2}
         ).json()
         assert payload["evidence"], "a deep query must fall back to shallower levels"
 
     def test_full_pipeline_completes_quickly(self, indexed: TestClient) -> None:
+        """Verify an indexed query completes within thirty seconds."""
         start = time.perf_counter()
         indexed.post("/query", json={"query": "What is in the collection?"})
         assert time.perf_counter() - start < 30.0
