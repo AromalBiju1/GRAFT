@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -21,13 +21,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ClusterGroup:
     cluster_id: int
-    node_ids: List[str]  # References to TreeNode.node_id
+    node_ids: list[str]  # References to TreeNode.node_id
 
 
 @dataclass
 class ClusterResult:
-    clusters: List[ClusterGroup]
-    embeddings: Dict[str, List[float]] = field(default_factory=dict)  # node_id -> vector
+    clusters: list[ClusterGroup]
+    embeddings: dict[str, list[float]] = field(default_factory=dict)  # node_id -> vector
 
 
 class EmbedClusterManager:
@@ -52,7 +52,7 @@ class EmbedClusterManager:
         algorithm: str = "gmm",
         random_state: int = 42,
         batch_size: int = 32,
-        encoder: Optional[Any] = None,
+        encoder: Any | None = None,
     ):
         if min_cluster_size < 1:
             raise ValueError("min_cluster_size must be >= 1")
@@ -78,14 +78,14 @@ class EmbedClusterManager:
         return self._encoder
 
     @staticmethod
-    def _validate(nodes: List[TreeNode]) -> None:
+    def _validate(nodes: list[TreeNode]) -> None:
         for i, node in enumerate(nodes):
             if not getattr(node, "node_id", None):
                 raise ValueError(f"Node at index {i} is missing node_id")
             if getattr(node, "text", None) is None:
                 raise ValueError(f"Node {node.node_id!r} is missing text")
 
-    def generate_embeddings(self, nodes: List[TreeNode]) -> List[TreeNode]:
+    def generate_embeddings(self, nodes: list[TreeNode]) -> list[TreeNode]:
         """Computes embeddings for each node and populates the node.embedding field."""
         if not nodes:
             return nodes
@@ -99,7 +99,7 @@ class EmbedClusterManager:
             show_progress_bar=False,
         )
         vectors = np.asarray(vectors, dtype=np.float32)
-        for node, vec in zip(nodes, vectors):
+        for node, vec in zip(nodes, vectors, strict=False):
             node.embedding = vec.tolist()
         return nodes
 
@@ -129,7 +129,7 @@ class EmbedClusterManager:
 
         return KMeans(n_clusters=k, n_init=10, random_state=self.random_state).fit_predict(X)
 
-    def cluster_nodes(self, nodes: List[TreeNode]) -> List[ClusterGroup]:
+    def cluster_nodes(self, nodes: list[TreeNode]) -> list[ClusterGroup]:
         """Groups nodes into semantic clusters based on their embedding vectors.
 
         Every input node lands in exactly one cluster. If there are fewer than
@@ -154,8 +154,8 @@ class EmbedClusterManager:
             logger.warning("Clustering failed (%s); using a single cluster", exc)
             return [ClusterGroup(cluster_id=0, node_ids=[n.node_id for n in nodes])]
 
-        buckets: Dict[int, List[str]] = {}
-        for node, label in zip(nodes, labels):
+        buckets: dict[int, list[str]] = {}
+        for node, label in zip(nodes, labels, strict=False):
             buckets.setdefault(int(label), []).append(node.node_id)
 
         # Drop empty components and renumber ids contiguously from 0.
@@ -164,7 +164,7 @@ class EmbedClusterManager:
             for i, label in enumerate(sorted(buckets))
         ]
 
-    def run(self, nodes: List[TreeNode]) -> ClusterResult:
+    def run(self, nodes: list[TreeNode]) -> ClusterResult:
         """Executes embedding generation and clustering in a single pass."""
         if not nodes:
             return ClusterResult(clusters=[], embeddings={})

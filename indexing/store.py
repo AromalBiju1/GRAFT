@@ -1,12 +1,11 @@
 """Persist embedded RAPTOR tree nodes through the vector-store wrapper."""
 
-from typing import List
 
 from indexing.tree_node import TreeNode
 from indexing.vector_store import ChromaVectorStore
 
 
-def persist_tree_nodes(nodes: List[TreeNode], vector_store: ChromaVectorStore) -> None:
+def persist_tree_nodes(nodes: list[TreeNode], vector_store: ChromaVectorStore) -> None:
     """Upsert nodes with hierarchy metadata and precomputed embeddings.
 
     Each node requires a non-empty ``metadata['document_id']`` as enforced

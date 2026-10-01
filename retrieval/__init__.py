@@ -30,19 +30,27 @@ logger = logging.getLogger(__name__)
 MAX_RETRIEVAL_DEPTH = 2
 
 
-def _where(filters: Mapping[str, Any] | None, level: int | None) -> dict[str, Any] | None:
+def _where(
+    filters: Mapping[str, Any] | None,
+    level: int | None,
+    *,
+    as_range: bool = False,
+) -> dict[str, Any] | None:
     """Build a valid Chroma ``where`` clause for *filters* plus a level.
 
     Chroma accepts only a single top-level operator in ``where``, so merging
     ``{"document_id": "doc_001"}`` with ``{"level": 1}`` into one flat dict
     raises ``ValueError: Expected where to have exactly one operator``. Multiple
     equality conditions must be combined with ``$and``.
+
+    With ``as_range`` the level becomes ``{"$in": [0 .. level]}``, which lets a
+    depth-capped search run as one round trip instead of one query per level.
     """
     conditions: list[dict[str, Any]] = []
     for key, value in (filters or {}).items():
         conditions.append({key: value} if not isinstance(value, Mapping) else {key: dict(value)})
     if level is not None:
-        conditions.append({"level": level})
+        conditions.append({"level": {"$in": list(range(level + 1))} if as_range else level})
     if not conditions:
         return None
     if len(conditions) == 1:
@@ -85,40 +93,28 @@ def retrieve(
         None if retrieval_depth is None else max(0, min(int(retrieval_depth), MAX_RETRIEVAL_DEPTH))
     )
 
-    store = ChromaVectorStore(
+    # Cached store: opening a Chroma collection costs ~6 ms, which was a
+    # meaningful share of a warm query. Never closed here -- it is shared.
+    store = ChromaVectorStore.shared(
         persist_path=Path(persist_path) if persist_path else settings.chroma_path,
         collection_name=collection_name or default_collection_name(),
     )
-    try:
-        if depth is None:
-            return store.query(
-                embedding=query_embedding, n_results=n_results, filters=_where(filters, None)
-            )
+    if depth is None:
+        return store.query(
+            embedding=query_embedding, n_results=n_results, filters=_where(filters, None)
+        )
 
-        # Search the requested level first, then progressively shallower ones,
-        # so a query still gets real leaf evidence when the document's tree has
-        # no node at the requested depth. Level 0 is always the floor, which
-        # keeps a simple query's retrieval genuinely shallow.
-        seen: set[str] = set()
-        merged: list[dict[str, Any]] = []
-        for level in range(depth, -1, -1):
-            hits = store.query(
-                embedding=query_embedding, n_results=n_results, filters=_where(filters, level)
-            )
-            for hit in hits:
-                cid = str(hit.get("chunk_id") or hit.get("node_id") or "")
-                if cid in seen:
-                    continue
-                seen.add(cid)
-                merged.append(hit)
-
-        merged.sort(key=lambda h: float(h.get("score") or 0.0), reverse=True)
-        return merged[:n_results]
-    finally:
-        try:
-            store.close()
-        except Exception as exc:  # pragma: no cover - close is best effort
-            logger.warning("Chroma close() failed: %s: %s", type(exc).__name__, exc)
+    # One round trip covering every level the depth allows. Querying each level
+    # separately cost depth+1 sequential Chroma calls for the same answer, since
+    # the output is score-sorted either way.
+    hits = store.query(
+        embedding=query_embedding,
+        n_results=n_results,
+        filters=_where(filters, depth, as_range=True),
+    )
+    hits = [h for h in hits if int((h.get("metadata") or {}).get("level", -1)) <= depth]
+    hits.sort(key=lambda h: float(h.get("score") or 0.0), reverse=True)
+    return hits[:n_results]
 
 
 __all__ = ["MAX_RETRIEVAL_DEPTH", "retrieve"]

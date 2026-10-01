@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 #: Dimension of the deterministic offline stub embedding.
 STUB_EMBEDDING_DIM = 16
 
+
 _model: Any | None = None
 _model_failed = False
 _lock = threading.Lock()

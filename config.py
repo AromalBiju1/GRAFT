@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_reload: bool = True
+    #: Load the embedder and open the Chroma collection at startup instead of
+    #: on the first query. Loading MiniLM costs ~0.4 s warm and up to ~17 s on
+    #: a cold model cache; left lazy that lands on a random request. Tests turn
+    #: this off, since they construct a client per test and would reload the
+    #: model every time.
+    warmup_on_startup: bool = True
 
     # Router thresholds
     default_retrieval_depth: int = 1

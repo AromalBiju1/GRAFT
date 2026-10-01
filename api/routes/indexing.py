@@ -33,8 +33,9 @@ from __future__ import annotations
 import re
 import tempfile
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated, Sequence
+from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
@@ -111,7 +112,9 @@ def _build_levels_dict(nodes: Sequence[TreeNode]) -> dict[str, int]:
 
 @router.post("/index")
 async def index_documents(
-    files: Annotated[list[UploadFile] | None, File(description="One or more .pdf or .docx files")] = None,
+    files: Annotated[
+        list[UploadFile] | None, File(description="One or more .pdf or .docx files")
+    ] = None,
     file: Annotated[UploadFile | None, File(description="Single file alias")] = None,
 ) -> dict:
     """Ingest uploaded documents into the hierarchical tree + vector store."""
@@ -175,7 +178,9 @@ async def index_documents(
                 documents.append((document_id, text, upload.filename))
 
             if not documents:
-                raise HTTPException(status_code=422, detail="No nodes generated from uploaded files")
+                raise HTTPException(
+                    status_code=422, detail="No nodes generated from uploaded files"
+                )
 
             # Chunk -> embed -> cluster -> summarize for every document.
             try:
@@ -191,7 +196,9 @@ async def index_documents(
                 raise HTTPException(status_code=500, detail=f"Indexing failed: {exc}") from exc
 
             if not all_nodes:
-                raise HTTPException(status_code=422, detail="No nodes generated from uploaded files")
+                raise HTTPException(
+                    status_code=422, detail="No nodes generated from uploaded files"
+                )
 
             store = ChromaVectorStore(
                 persist_path=DEFAULT_PERSIST_PATH,

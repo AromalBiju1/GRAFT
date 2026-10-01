@@ -31,7 +31,6 @@ from indexing.config import (
     STUB_EMBEDDING_DIM,
 )
 from indexing.summarizer import RecursiveSummarizer
-from indexing.tree_node import TreeNode
 
 LONG_TEXT = " ".join(
     f"Passage {i} describes entity E{i} with numeric claim {i * 3}." for i in range(400)
