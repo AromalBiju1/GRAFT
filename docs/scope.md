@@ -55,7 +55,7 @@ that `generation.synthesize` consumes.
 - Used for every benchmark run to produce an honest comparison.
 
 ### 6. Benchmark Harness
-- Seed question set in `graft/benchmark/datasets.py`
+- Seed question set in `benchmark/datasets.py`
 - Metrics: accuracy (human or LLM-judged), latency_ms, modules_fired,
   retrieval precision@k
 - Logging to `db/graft_logs.db` via `db.logger`
@@ -63,7 +63,7 @@ that `generation.synthesize` consumes.
 Acceptance: can run `graft` vs `baseline` on the seed set and emit a table.
 
 ### 7. API + Frontend
-- FastAPI at `graft/api/main.py`: `GET /health`, `POST /query`, `POST /index`
+- FastAPI at `api/main.py`: `GET /health`, `POST /query`, `POST /index`
 - React frontend at `frontend/` that hits the API (Vite proxy)
 
 ### 8. Docs + Contracts
