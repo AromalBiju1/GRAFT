@@ -38,6 +38,7 @@ def _unique_object(pairs):
 
 @pytest.fixture(scope="module")
 def records():
+    """Load benchmark records while rejecting duplicate JSON keys."""
     return [json.loads(line, object_pairs_hook=_unique_object) for line in BENCHMARK_LINES]
 
 
@@ -52,6 +53,7 @@ def _question(records, prefix):
     "line", BENCHMARK_LINES, ids=[f"line-{i + 1}" for i in range(len(BENCHMARK_LINES))]
 )
 def test_each_line_is_a_complete_labelled_question(line):
+    """Validate required fields, nonempty text, and unique SHA-256 evidence IDs."""
     assert line.strip(), "Blank lines are not benchmark records"
     record = json.loads(line, object_pairs_hook=_unique_object)
     assert isinstance(record, dict)
@@ -72,6 +74,7 @@ def test_each_line_is_a_complete_labelled_question(line):
 
 
 def test_dataset_retains_twenty_questions_without_duplicate_queries(records):
+    """Require at least twenty questions with distinct normalized query text."""
     assert len(records) >= 20
     queries = [" ".join(record["query"].casefold().split()) for record in records]
     assert len(queries) == len(set(queries)), "Duplicate queries bias benchmark averages"
@@ -107,6 +110,7 @@ def test_dataset_retains_twenty_questions_without_duplicate_queries(records):
     ids=lambda value: value if isinstance(value, str) else None,
 )
 def test_questions_retain_all_and_only_their_labelled_evidence(records, prefix, evidence):
+    """Match evidence IDs to labelled source stems and chunk indices."""
     expected_ids = set()
     for filename, index in evidence:
         source = SAMPLE_DOCS / filename
@@ -143,6 +147,7 @@ CONVS2S_DE_IN_TRANSFORMER = Decimal("26.36")
     ids=lambda value: value if isinstance(value, str) else None,
 )
 def test_numeric_answers_preserve_operands_and_correct_results(records, prefix, expected_numbers):
+    """Check answer numbers against the expected operands and computed results."""
     answer = _question(records, prefix)["expected_answer"]
     # Signs attached to digits count; spaced subtraction and '10-model' do not.
     numbers = [Decimal(value) for value in re.findall(r"(?<!\w)-?\d+(?:\.\d+)?", answer)]
@@ -182,6 +187,7 @@ def test_numeric_answers_preserve_operands_and_correct_results(records, prefix, 
     ids=lambda value: value if isinstance(value, str) else None,
 )
 def test_answers_preserve_key_facts_and_comparison_qualifications(records, prefix, required_claims):
+    """Require each answer to retain its key claims and comparison caveats."""
     answer = _question(records, prefix)["expected_answer"]
     for claim in required_claims:
         assert re.search(claim, answer, re.IGNORECASE), f"Missing claim: {claim}"
@@ -191,6 +197,7 @@ def test_answers_preserve_key_facts_and_comparison_qualifications(records, prefi
     "prefix", ["How does the specified TLS", "Is TLS_RSA_WITH_AES_128_CBC_SHA"]
 )
 def test_tls_paraphrases_keep_mandatory_and_removed_in_their_respective_versions(records, prefix):
+    """Keep cipher-suite requirements tied to their respective TLS versions."""
     answer = _question(records, prefix)["expected_answer"]
     assert re.search(r"RFC 5246.*TLS_RSA_WITH_AES_128_CBC_SHA.*mandatory.*TLS 1\.2", answer)
     assert re.search(r"RFC 8446.*removes static RSA.*TLS 1\.3", answer)
