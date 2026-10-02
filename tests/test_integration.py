@@ -61,6 +61,8 @@ class TestRealEmbedder:
         assert health["embedding_dim"] == 384
 
     def test_model_loads_without_error(self) -> None:
+        if active_provider() != "sentence-transformers":
+            pytest.skip("sentence-transformers model unavailable; skipping integration test")
         assert _load_model() is not None
 
 

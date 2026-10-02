@@ -1,5 +1,7 @@
 # GRAFT — Gated Retrieval Activation Framework for Trees
 
+[![CI](https://github.com/AromalBiju1/GRAFT/actions/workflows/ci.yml/badge.svg?event=pull_request)](https://github.com/AromalBiju1/GRAFT/actions/workflows/ci.yml)
+
 An adaptive, complexity-aware Retrieval-Augmented Generation (RAG) system that grafts
 specialist reasoning modules onto a RAPTOR-style document tree, activating only the
 retrieval depth and reasoning modules each query actually needs.
@@ -245,7 +247,6 @@ run the activated modules, and return a grounded answer with evidence.
 | Generation | Concatenates module output — no LLM call, so answers are grounded but not well-worded |
 | Contradiction detection | Keyword-overlap + negation heuristic; high false-positive rate, needs an NLI model |
 | Benchmarking | Metric helpers only — no dataset and no runner CLI, so no numbers yet |
-| CI | No GitHub Actions workflow; tests are run manually |
 | Frontend | Scaffold only (`App.jsx` renders a heading) — not wired to `/query` |
 | Analytics | Query logger writes to SQLite, but no endpoint reads it back |
 
