@@ -110,10 +110,17 @@ class BenchmarkRecord:
 # Dataset loading
 # --------------------------------------------------------------------------- #
 def load_dataset(path: Path | str) -> list[BenchmarkRecord]:
-    """Read a JSONL benchmark file, raising :class:`DatasetFormatError` on any problem.
+    """Read a UTF-8 JSONL benchmark file into records with source line numbers.
 
     Blank lines are skipped. Unknown extra keys are allowed (e.g. a ``tier``
-    tag) and ignored. Every error message is prefixed ``<path>:<line>:``.
+    tag) and ignored. Each object must have nonblank ``query`` and
+    ``expected_answer`` strings and a nonempty ``relevant_chunk_ids`` list
+    of nonblank strings. String values are preserved without trimming.
+
+    Raise :class:`DatasetFormatError` for read failures, invalid records, or
+    a file with no records. Record errors include ``<path>:<line>:``; read
+    failures and empty files include only the path. Invalid UTF-8 raises
+    :class:`UnicodeDecodeError` unchanged.
     """
     p = Path(path)
     try:
@@ -173,13 +180,15 @@ def load_dataset(path: Path | str) -> list[BenchmarkRecord]:
 # Metrics
 # --------------------------------------------------------------------------- #
 def _tokens(text: str) -> list[str]:
+    """Return lowercase runs of Unicode alphanumeric characters and underscores."""
     return re.findall(r"\w+", text.lower())
 
 
 def token_f1(prediction: str, reference: str) -> float:
     """Token-overlap F1 (SQuAD-style, multiset overlap, no stop-word removal).
 
-    Both empty -> 1.0; exactly one empty -> 0.0.
+    Tokens are lowercase runs of Unicode alphanumeric characters and underscores.
+    Both token lists empty -> 1.0; exactly one empty -> 0.0.
     """
     pred, ref = _tokens(prediction), _tokens(reference)
     if not pred and not ref:
@@ -201,6 +210,12 @@ def _score(
     record: BenchmarkRecord,
     latency_ms: float,
 ) -> dict[str, Any]:
+    """Return the answer and its four benchmark metrics against *record*.
+
+    Round token F1 and top-five retrieval precision to four decimal places
+    and the supplied latency in milliseconds to three. Count all supplied
+    module results, including results with no answer or evidence.
+    """
     return {
         "answer": answer,
         "accuracy_f1": round(token_f1(answer, record.expected_answer), 4),
@@ -216,6 +231,7 @@ def _score(
 # Pipelines
 # --------------------------------------------------------------------------- #
 def _module_registry() -> dict[str, BaseModule]:
+    """Return fresh instances of the four specialist modules, keyed by name."""
     return {
         m.name: m
         for m in (
@@ -234,7 +250,16 @@ def run_graft(
     retriever: Retriever,
     registry: dict[str, BaseModule],
 ) -> dict[str, Any]:
-    """route -> retrieve -> activated modules -> generate (mirrors ``POST /query``)."""
+    """Answer a query with router-selected retrieval depth and specialist modules.
+
+    Request five chunks using ``embedder`` and ``retriever``. Execute activated
+    modules present in ``registry``; missing names are silently skipped.
+    Return the synthesized ``request_id``, ``answer``, and ``evidence``, plus
+    raw ``retrieval``, serialized ``module_results``, and the ``routing`` decision.
+
+    Invalid queries, blank request IDs, and invalid router thresholds raise
+    :class:`ValueError`. Errors from the supplied callbacks and modules propagate.
+    """
     decision = route(query)
     retrieved = retriever(
         embedder(query),
@@ -259,6 +284,9 @@ def _baseline_retriever(retriever: Retriever | None) -> Iterator[None]:
 
     ``run_baseline`` has no retriever parameter, so injecting one means
     rebinding ``baseline.retrieve`` for the duration of the run.
+    ``None`` leaves it unchanged. The original binding is restored on exit,
+    including when the body raises; the exception propagates. This changes
+    module-wide state, so overlapping uses are not isolated.
     """
     import baseline as baseline_module
 
@@ -274,10 +302,16 @@ def _baseline_retriever(retriever: Retriever | None) -> Iterator[None]:
 
 
 def _mean(values: list[float]) -> float:
+    """Return the arithmetic mean rounded to four decimals, or 0.0 for no values."""
     return round(sum(values) / len(values), 4) if values else 0.0
 
 
 def aggregate(per_query: list[dict[str, Any]], system: str) -> dict[str, float]:
+    """Average each benchmark metric for ``system`` (``graft`` or ``baseline``).
+
+    Round means to four decimals; empty input gives 0.0 for every metric.
+    Missing system or metric keys in a query result raise :class:`KeyError`.
+    """
     return {key: _mean([q[system][key] for q in per_query]) for key in METRIC_KEYS}
 
 
@@ -296,6 +330,16 @@ def run_benchmark(
     ``embedder`` / ``retriever`` default to the real
     :func:`embeddings.embed_text` / :func:`retrieval.retrieve`. Pass fakes to
     run with no network and no vector store.
+
+    Return the seed, query count, metric definitions, per-query scores, and
+    aggregate means for both systems. Latency includes query embedding and
+    answer generation but excludes the initial ``embedder("warm-up")`` call.
+    Empty input still warms up the embedder and returns zero aggregate metrics.
+
+    Reset Python's global RNG and NumPy's when available to ``seed``; their
+    previous states are not restored. Temporarily replace the baseline's
+    module-wide retriever, restoring it even on failure. Errors from seeding,
+    warm-up, or either pipeline propagate without returning partial results.
     """
     random.seed(seed)
     try:  # numpy is optional; seed it if a downstream module pulls it in
@@ -416,6 +460,16 @@ def main(
     embedder: Embedder | None = None,
     retriever: Retriever | None = None,
 ) -> int:
+    """Run the benchmark CLI using *argv*, or process arguments when it is ``None``.
+
+    Forward optional callbacks to :func:`run_benchmark`. Create output parent
+    directories, overwrite the output JSON file, print a summary, and return 0
+    on success. A :class:`DatasetFormatError` prints an error to stderr and
+    returns 1 before running the benchmark or writing output.
+
+    Argument parsing raises :class:`SystemExit` for help or invalid arguments.
+    UTF-8 decoding, benchmark, and output I/O errors propagate unchanged.
+    """
     parser = argparse.ArgumentParser(
         prog="python3 -m benchmark.runner",
         description="Run GRAFT vs the flat baseline on a JSONL benchmark set.",
