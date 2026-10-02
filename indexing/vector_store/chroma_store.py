@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
 import chromadb
 
-
 DEFAULT_PERSIST_PATH = Path(".graft/chroma")
 DEFAULT_COLLECTION_NAME = "graft_tree_nodes"
+
+#: Process-wide store cache, keyed by (resolved persist path, collection).
+#:
+#: Opening a Chroma collection costs ~6 ms, and the query path was paying that on
+#: *every* ``retrieve()`` and ``index_document()`` call — roughly a quarter of a
+#: warm query's total latency spent reconnecting to a local database. A store is
+#: stateless apart from its client and collection handle, so one instance per
+#: (path, collection) is reused instead.
+_SHARED_STORES: dict[tuple[str, str], ChromaVectorStore] = {}
+_SHARED_LOCK = threading.Lock()
 
 
 class ChromaVectorStore:
@@ -97,7 +108,7 @@ class ChromaVectorStore:
 
         results: list[dict[str, Any]] = []
         for chunk_id, document, metadata, distance in zip(
-            ids, documents, metadatas, distances
+            ids, documents, metadatas, distances, strict=False
         ):
             numeric_distance = float(distance)
             results.append(
@@ -119,6 +130,44 @@ class ChromaVectorStore:
         del self._collection
         self._client.close()
 
+    @classmethod
+    def shared(
+        cls,
+        persist_path: str | Path = DEFAULT_PERSIST_PATH,
+        collection_name: str = DEFAULT_COLLECTION_NAME,
+    ) -> ChromaVectorStore:
+        """Return a cached store for ``(persist_path, collection_name)``.
+
+        Prefer this on hot paths. A store handed out here must **not** be
+        ``close()``d by the caller — it is shared with every other caller for
+        the same key. If it is closed anyway, the next ``shared()`` call drops
+        it from the cache and builds a fresh one, so a stray close degrades
+        performance rather than causing a fault.
+
+        Chroma's client and collection handles are safe to use concurrently,
+        which matters because FastAPI runs these sync endpoints in a threadpool.
+        """
+        key = (str(Path(persist_path).resolve()), str(collection_name))
+        with _SHARED_LOCK:
+            store = _SHARED_STORES.get(key)
+            if store is not None and not store._closed:
+                return store
+            store = cls(persist_path=persist_path, collection_name=collection_name)
+            _SHARED_STORES[key] = store
+            return store
+
+    @classmethod
+    def reset_shared_cache(cls) -> None:
+        """Close and drop every cached store. Used by tests for isolation."""
+        with _SHARED_LOCK:
+            stores = list(_SHARED_STORES.values())
+            _SHARED_STORES.clear()
+        for store in stores:
+            # Teardown is best effort: a store that fails to close must not
+            # prevent the others from being released.
+            with suppress(Exception):
+                store.close()
+
     def __enter__(self) -> ChromaVectorStore:
         return self
 
@@ -137,6 +186,9 @@ class ChromaVectorStore:
             raise TypeError("embedding must be a sequence of numbers")
         if not embedding:
             raise ValueError("embedding must not be empty")
-        if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in embedding):
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            for value in embedding
+        ):
             raise TypeError("embedding must contain only numbers")
         return [float(value) for value in embedding]

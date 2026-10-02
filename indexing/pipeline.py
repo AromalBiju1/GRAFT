@@ -101,19 +101,19 @@ def persist_tree_nodes(
             retrieval can never see, so this fails loudly instead.
     """
     from indexing.store import persist_tree_nodes as _persist
+
+    # Imported lazily: `vector_store` re-exports from `indexing.vector_store`,
+    # so importing it at module scope closes the cycle
+    # indexing -> pipeline -> vector_store -> indexing.
     from vector_store import ChromaVectorStore
 
-    store = ChromaVectorStore(
+    # Cached store: opening a collection per document was pure overhead during
+    # a bulk index. Never closed here -- it is shared.
+    store = ChromaVectorStore.shared(
         persist_path=Path(persist_path) if persist_path else settings.chroma_path,
         collection_name=collection_name or default_collection_name(),
     )
-    try:
-        _persist(nodes, store)
-    finally:
-        try:
-            store.close()
-        except Exception as exc:  # pragma: no cover - close is best effort
-            logger.warning("Chroma close() failed: %s: %s", type(exc).__name__, exc)
+    _persist(nodes, store)
 
 
 def main() -> None:  # pragma: no cover

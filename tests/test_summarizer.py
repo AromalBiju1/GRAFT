@@ -4,17 +4,15 @@ Uses mocked LLM calls — no network or model required.
 """
 
 import unittest
-from typing import List
-from unittest.mock import MagicMock
 
 from indexing.prompts import SUMMARIZATION_PROMPT, format_summarization_prompt
 from indexing.summarizer import RecursiveSummarizer, build_raptor_tree
 from indexing.tree_node import TreeNode
 
 
-def make_llm(responses: List[str] | None = None):
+def make_llm(responses: list[str] | None = None):
     """Return a recording callable LLM returning canned summaries."""
-    calls: List[str] = []
+    calls: list[str] = []
     canned = list(responses) if responses else []
 
     def _llm(prompt: str) -> str:
@@ -28,8 +26,8 @@ def make_llm(responses: List[str] | None = None):
     return _llm
 
 
-def make_leaves(n: int, dim: int = 4, with_embeddings: bool = True) -> List[TreeNode]:
-    leaves: List[TreeNode] = []
+def make_leaves(n: int, dim: int = 4, with_embeddings: bool = True) -> list[TreeNode]:
+    leaves: list[TreeNode] = []
     for i in range(n):
         embedding = [float(i + 1 + j * 0.1) for j in range(dim)] if with_embeddings else None
         leaves.append(
@@ -44,11 +42,11 @@ def make_leaves(n: int, dim: int = 4, with_embeddings: bool = True) -> List[Tree
     return leaves
 
 
-def make_separable_leaves() -> List[TreeNode]:
+def make_separable_leaves() -> list[TreeNode]:
     """Six leaves in two well-separated embedding groups."""
     group_a = [[1.0, 0.0], [1.1, 0.1], [0.9, -0.1]]
     group_b = [[0.0, 1.0], [0.1, 1.1], [-0.1, 0.9]]
-    leaves: List[TreeNode] = []
+    leaves: list[TreeNode] = []
     for i, emb in enumerate(group_a + group_b):
         leaves.append(
             TreeNode(
@@ -122,8 +120,12 @@ class SummarizeClusterTests(unittest.TestCase):
         llm = make_llm(["word " * 500])
         summarizer = RecursiveSummarizer(llm, max_summary_tokens=10)
         children = [
-            TreeNode(node_id="a", text="t1", level=0, embedding=[1.0, 0.0], metadata={"document_id": "d"}),
-            TreeNode(node_id="b", text="t2", level=0, embedding=[3.0, 2.0], metadata={"document_id": "d"}),
+            TreeNode(
+                node_id="a", text="t1", level=0, embedding=[1.0, 0.0], metadata={"document_id": "d"}
+            ),
+            TreeNode(
+                node_id="b", text="t2", level=0, embedding=[3.0, 2.0], metadata={"document_id": "d"}
+            ),
         ]
         summary = summarizer.summarize_cluster(children, level=1)
         self.assertEqual(len(summary.text.split()), 10)

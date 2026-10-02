@@ -69,7 +69,10 @@ class IndexingTests(unittest.TestCase):
         self.assert_schema(ingest_document(path, document_id='test_doc'))
 
     def test_size_overlap_order_and_no_lost_content(self) -> None:
-        sentences = [f'Sentence {i} contains several unique details about this document.' for i in range(150)]
+        sentences = [
+            f'Sentence {i} contains several unique details about this document.'
+            for i in range(150)
+        ]
         text = ' '.join(sentences)
         chunks = chunk_text(text, document_id='test_doc')
         self.assert_schema(chunks)
@@ -106,8 +109,12 @@ class IndexingTests(unittest.TestCase):
     def test_ids_are_stable_and_document_specific(self) -> None:
         first = chunk_text('Example text.', document_id='test_doc')
         self.assertEqual(first, chunk_text('Example text.', document_id='test_doc'))
-        self.assertEqual(first[0]['chunk_id'], chunk_text('Changed text.', document_id='test_doc')[0]['chunk_id'])
-        self.assertNotEqual(first[0]['chunk_id'], chunk_text('Example text.', document_id='other')[0]['chunk_id'])
+        self.assertEqual(
+            first[0]['chunk_id'], chunk_text('Changed text.', document_id='test_doc')[0]['chunk_id']
+        )
+        self.assertNotEqual(
+            first[0]['chunk_id'], chunk_text('Example text.', document_id='other')[0]['chunk_id']
+        )
 
     def test_oversized_sentence_is_preserved_and_progresses(self) -> None:
         sentence = 'Unicode 世界 🧬 ' * 500 + 'ends.'
@@ -133,9 +140,10 @@ class IndexingTests(unittest.TestCase):
                 write_pdf(path, [''])
             else:
                 Document().save(path)
-            with self.subTest(suffix=suffix, kind='no text'):
-                with self.assertRaises(DocumentParsingError):
-                    parse_document(path)
+            with self.subTest(suffix=suffix, kind='no text'), self.assertRaises(
+                DocumentParsingError
+            ):
+                parse_document(path)
             for content in [b'', b'not a document']:
                 path.write_bytes(content)
                 with self.subTest(suffix=suffix, content=content):

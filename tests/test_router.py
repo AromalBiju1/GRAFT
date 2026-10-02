@@ -98,11 +98,22 @@ class TestClassify:
             assert label in ("simple", "moderate", "complex")
             assert 0.0 <= confidence <= 1.0
 
-        @pytest.mark.parametrize("bad", ["", "   ", "\n\t"])
-        def test_route_empty_query_raises(self, bad: str) -> None:
-            """Reject empty and whitespace-only queries when routing."""
-            with pytest.raises(ValueError):
-                route(bad)
+    @pytest.mark.parametrize("bad", ["", "   ", "\n\t"])
+    def test_route_empty_query_raises(self, bad: str) -> None:
+        """Reject empty and whitespace-only queries when routing."""
+        with pytest.raises(ValueError):
+            route(bad)
+
+    @pytest.mark.parametrize("bad", ["", "   ", "\n\t"])
+    def test_empty_query_raises(self, bad: str) -> None:
+        """The classifier rejects the same inputs as the router.
+
+        Kept separate from the router test above: ``classify`` raising is a
+        distinct contract from ``route`` raising, and route calls classify, so
+        a regression in one would otherwise hide a regression in the other.
+        """
+        with pytest.raises(ValueError):
+            classify(bad)
 
     def test_non_string_query_raises(self) -> None:
         """Reject non-string input before classifying a query."""
@@ -167,7 +178,7 @@ class TestModuleActivation:
             "disagree",
             "outdated",
             "superseded",
-            "versus", 
+            "versus",
             "vs",
         ],
     )
@@ -279,8 +290,10 @@ class TestThresholds:
         assert centre > near_lo
         assert centre > near_hi
 
-    def test_complex_confidence_rises_away_from_upper_threshold(self, monkeypatch, thresholds) -> None:
-        """Increase complex confidence as the score rises above the upper threshold."""
+    def test_complex_confidence_rises_away_from_upper_threshold(
+        self, monkeypatch, thresholds
+    ) -> None:
+        """Increase complex confidence as the score rises above the threshold."""
         _, hi = thresholds
         room = 1.0 - hi
         _, near = self._at(monkeypatch, hi + room * 0.1)

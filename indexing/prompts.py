@@ -1,7 +1,7 @@
 """Prompt templates for the RAPTOR indexing pipeline."""
 
 SUMMARIZATION_PROMPT = """You are a precise technical summarizer building a hierarchical index.
-Summarize the following related text passages into a cohesive, standalone summary. 
+Summarize the following related text passages into a cohesive, standalone summary.
 Retain critical factual details, names, entities, and numeric claims.
 
 Passages:

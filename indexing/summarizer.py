@@ -25,7 +25,7 @@ object wrapping one under ``text`` / ``summary`` / ``content``).
 from __future__ import annotations
 
 import math
-from typing import Any, List
+from typing import Any
 
 from indexing.config import (
     COLLAPSE_THRESHOLD,
@@ -85,7 +85,9 @@ class RecursiveSummarizer:
                 for name in ("generate", "complete", "summarize", "invoke", "chat", "__call__")
             )
         ):
-            raise TypeError("llm_client must be callable or expose generate/complete/summarize/invoke/chat")
+            raise TypeError(
+                "llm_client must be callable or expose generate/complete/summarize/invoke/chat"
+            )
         if not isinstance(max_summary_tokens, int) or isinstance(max_summary_tokens, bool):
             raise TypeError("max_summary_tokens must be an integer")
         if max_summary_tokens < 1:
@@ -95,7 +97,9 @@ class RecursiveSummarizer:
         if min_cluster_size < 2:
             raise ValueError("min_cluster_size must be >= 2")
         if cluster_method not in _VALID_METHODS:
-            raise ValueError(f"cluster_method must be one of {_VALID_METHODS}, got {cluster_method!r}")
+            raise ValueError(
+                f"cluster_method must be one of {_VALID_METHODS}, got {cluster_method!r}"
+            )
 
         self.llm_client = llm_client
         self.max_summary_tokens = max_summary_tokens
@@ -111,7 +115,7 @@ class RecursiveSummarizer:
     # Public API (spec interface)
     # ------------------------------------------------------------------
 
-    def summarize_cluster(self, child_nodes: List[TreeNode], level: int) -> TreeNode:
+    def summarize_cluster(self, child_nodes: list[TreeNode], level: int) -> TreeNode:
         """Generate a summary node for a cluster of child nodes.
 
         Concatenates child texts, prompts the LLM via
@@ -139,7 +143,9 @@ class RecursiveSummarizer:
             raise ValueError("level must be an integer >= 1")
         for child in child_nodes:
             if not isinstance(child, TreeNode):
-                raise TypeError(f"child_nodes must contain TreeNode objects, got {type(child).__name__}")
+                raise TypeError(
+                    f"child_nodes must contain TreeNode objects, got {type(child).__name__}"
+                )
 
         concatenated = "\n\n".join(child.text for child in child_nodes)
         prompt = SUMMARIZATION_PROMPT.format(concatenated_texts=concatenated)
@@ -170,7 +176,7 @@ class RecursiveSummarizer:
             child.parent_id = node_id
         return summary_node
 
-    def build_tree_layers(self, leaf_nodes: List[TreeNode]) -> List[TreeNode]:
+    def build_tree_layers(self, leaf_nodes: list[TreeNode]) -> list[TreeNode]:
         """Recursively cluster and summarize until the root is generated.
 
         Args:
@@ -189,10 +195,12 @@ class RecursiveSummarizer:
             return []
         for node in leaf_nodes:
             if not isinstance(node, TreeNode):
-                raise TypeError(f"leaf_nodes must contain TreeNode objects, got {type(node).__name__}")
+                raise TypeError(
+                    f"leaf_nodes must contain TreeNode objects, got {type(node).__name__}"
+                )
 
-        all_nodes: List[TreeNode] = list(leaf_nodes)
-        current: List[TreeNode] = list(leaf_nodes)
+        all_nodes: list[TreeNode] = list(leaf_nodes)
+        current: list[TreeNode] = list(leaf_nodes)
         level = 0
 
         if len(current) == 1:
@@ -205,7 +213,7 @@ class RecursiveSummarizer:
             if guard > MAX_TREE_DEPTH:
                 break
             clusters = self._cluster_nodes(current)
-            next_layer: List[TreeNode] = []
+            next_layer: list[TreeNode] = []
             for cluster in clusters:
                 summary = self.summarize_cluster(cluster, level=level + 1)
                 next_layer.append(summary)
@@ -227,7 +235,7 @@ class RecursiveSummarizer:
             current[0].parent_id = None
         return all_nodes
 
-    def build_raptor_tree(self, leaf_nodes: List[TreeNode]) -> List[TreeNode]:
+    def build_raptor_tree(self, leaf_nodes: list[TreeNode]) -> list[TreeNode]:
         """Alias for :meth:`build_tree_layers` (spec pipeline name)."""
         return self.build_tree_layers(leaf_nodes)
 
@@ -241,7 +249,7 @@ class RecursiveSummarizer:
         return node_id
 
     @staticmethod
-    def _infer_document_id(child_nodes: List[TreeNode]) -> str:
+    def _infer_document_id(child_nodes: list[TreeNode]) -> str:
         for child in child_nodes:
             document_id = child.metadata.get("document_id")
             if isinstance(document_id, str) and document_id.strip():
@@ -249,7 +257,7 @@ class RecursiveSummarizer:
         return "doc_001"
 
     @staticmethod
-    def _mean_embedding(child_nodes: List[TreeNode]) -> list[float] | None:
+    def _mean_embedding(child_nodes: list[TreeNode]) -> list[float] | None:
         vectors = [c.embedding for c in child_nodes if c.embedding]
         if not vectors or any(not v for v in vectors):
             return None
@@ -257,7 +265,7 @@ class RecursiveSummarizer:
         if any(len(v) != dim for v in vectors):
             return None
         try:
-            return [sum(col) / len(vectors) for col in zip(*vectors)]
+            return [sum(col) / len(vectors) for col in zip(*vectors, strict=False)]
         except (TypeError, ValueError):
             return None
 
@@ -311,7 +319,7 @@ class RecursiveSummarizer:
 
     # -- clustering ----------------------------------------------------
 
-    def _cluster_nodes(self, nodes: List[TreeNode]) -> List[List[TreeNode]]:
+    def _cluster_nodes(self, nodes: list[TreeNode]) -> list[list[TreeNode]]:
         """Group ``nodes`` into clusters.
 
         Uses ``cluster_method`` when embeddings carry signal; otherwise falls
@@ -342,8 +350,8 @@ class RecursiveSummarizer:
                 labels = self._gmm_labels(matrix, n_clusters)
         except Exception:
             return self._sequential_clusters(nodes)
-        groups: dict[int, List[TreeNode]] = {}
-        for node, label in zip(nodes, labels):
+        groups: dict[int, list[TreeNode]] = {}
+        for node, label in zip(nodes, labels, strict=False):
             groups.setdefault(int(label), []).append(node)
         clusters = [groups[key] for key in sorted(groups)]
         # Merge degenerate singletons produced by GMM edge cases back into
@@ -364,12 +372,12 @@ class RecursiveSummarizer:
             return self._sequential_clusters(nodes)
         return clusters
 
-    def _sequential_clusters(self, nodes: List[TreeNode]) -> List[List[TreeNode]]:
+    def _sequential_clusters(self, nodes: list[TreeNode]) -> list[list[TreeNode]]:
         size = max(2, self.min_cluster_size)
         return [nodes[i : i + size] for i in range(0, len(nodes), size)]
 
     @staticmethod
-    def _embeddings_matrix(nodes: List[TreeNode]) -> Any | None:
+    def _embeddings_matrix(nodes: list[TreeNode]) -> Any | None:
         try:
             import numpy as np
         except ImportError:
@@ -446,12 +454,12 @@ class RecursiveSummarizer:
 
 
 def build_raptor_tree(
-    leaf_nodes: List[TreeNode],
+    leaf_nodes: list[TreeNode],
     llm_client: Any,
     max_summary_tokens: int = DEFAULT_MAX_SUMMARY_TOKENS,
     min_cluster_size: int = DEFAULT_MIN_CLUSTER_SIZE,
     cluster_method: str = DEFAULT_CLUSTER_METHOD,
-) -> List[TreeNode]:
+) -> list[TreeNode]:
     """Build a RAPTOR tree from ``leaf_nodes`` with a one-shot summarizer.
 
     Convenience wrapper around :class:`RecursiveSummarizer` for callers

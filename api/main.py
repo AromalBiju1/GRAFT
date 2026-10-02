@@ -13,6 +13,8 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +34,7 @@ from modules.multi_hop import MultiHopModule
 from modules.numeric_reasoning import NumericReasoningModule
 from retrieval import retrieve
 from router import route
+from vector_store import ChromaVectorStore
 from version import __version__
 
 logger = logging.getLogger(__name__)
@@ -49,10 +52,47 @@ MODULE_REGISTRY: dict[str, Any] = {
     "contradiction_detection": ContradictionDetectionModule(),
 }
 
+def _warmup() -> None:
+    """Load the embedder and open the Chroma collection before serving traffic.
+
+    Loading ``all-MiniLM-L6-v2`` and creating the collection costs roughly
+    0.4 s warm and up to ~17 s on a cold model cache. Left lazy, that lands
+    entirely on whichever unlucky request arrives first, which makes the first
+    query look like a latency regression rather than a cold start.
+    """
+    started = time.perf_counter()
+    try:
+        _ = embed_text("warmup")
+        store = ChromaVectorStore.shared(
+            persist_path=settings.chroma_path, collection_name=collection_name()
+        )
+        _ = store.query(embed_text("warmup"), 1, {"level": 0})
+    except Exception as exc:  # pragma: no cover - startup must not hard-fail
+        logger.warning("Warmup failed (%s: %s); serving anyway.", type(exc).__name__, exc)
+    else:
+        logger.info(
+            "Warmup done in %.0f ms (embedder=%s dim=%d)",
+            (time.perf_counter() - started) * 1000.0,
+            active_provider(),
+            embedding_dim(),
+        )
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    if settings.warmup_on_startup:
+        _warmup()
+    yield
+    # Release the cached Chroma handle so the process can exit cleanly and
+    # tests do not leak one open client per temporary directory.
+    ChromaVectorStore.reset_shared_cache()
+
+
 app = FastAPI(
     title="GRAFT API",
     version=__version__,
     description="Gated Retrieval Activation Framework for Trees — adaptive RAG",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

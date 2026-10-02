@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 
 from api import main as api_main
 from config import settings
-from embeddings import _load_model, active_provider, reset_model_cache
+from embeddings import _load_model, active_provider
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SAMPLE_DOCS = REPO_ROOT / "data" / "sample_docs"
@@ -32,7 +32,13 @@ pytestmark = pytest.mark.integration
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(settings, "chroma_path", tmp_path / "chroma")
-    reset_model_cache()
+    # Startup warmup is off: this fixture builds one client per test, and warming
+    # loads the ~25 s model every time. The lifespan teardown releases the cached
+    # Chroma handle instead.
+    monkeypatch.setattr(settings, "warmup_on_startup", False)
+    # The embedder is deterministic and independent of chroma_path, so the model
+    # cache is deliberately NOT reset here -- doing so cost one full model load
+    # per test across this module.
     if active_provider() != "sentence-transformers":  # pragma: no cover - offline
         pytest.skip("sentence-transformers model unavailable; skipping integration test")
     return TestClient(api_main.app)

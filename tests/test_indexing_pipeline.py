@@ -22,7 +22,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from indexing.builder import build_tree, build_tree_from_chunks, _stub_embedding
+from indexing.builder import _stub_embedding, build_tree, build_tree_from_chunks
 from indexing.chunker import chunk_text
 from indexing.ingest import parse_document
 from indexing.store import persist_tree_nodes
@@ -112,7 +112,9 @@ class IndexingPipelineSmokeTests(unittest.TestCase):
             chunks = chunk_text(
                 text, chunk_size=200, overlap=20, document_id=file_path.stem, source=file_path.name
             )
-            self.assertGreaterEqual(len(chunks), 1, f"Should produce at least one chunk for {file_path}")
+            self.assertGreaterEqual(
+                len(chunks), 1, f"Should produce at least one chunk for {file_path}"
+            )
             total_chunks += len(chunks)
 
             nodes = build_tree_from_chunks(
@@ -121,7 +123,8 @@ class IndexingPipelineSmokeTests(unittest.TestCase):
             # Build tree also via high-level helper for one file to ensure both paths work
             if file_path == self.sample_files[0]:
                 nodes_via_text = build_tree(
-                    text, document_id=file_path.stem, source=file_path.name, chunk_size=200, chunk_overlap=20, cluster_size=4
+                    text, document_id=file_path.stem, source=file_path.name,
+                    chunk_size=200, chunk_overlap=20, cluster_size=4,
                 )
                 self.assertEqual(len(nodes), len(nodes_via_text))
 
@@ -165,7 +168,10 @@ class IndexingPipelineSmokeTests(unittest.TestCase):
         for leaf in leaves:
             self.assertIsNotNone(leaf.parent_id, f"Leaf {leaf.node_id} should have parent_id")
             assert leaf.parent_id is not None
-            self.assertIn(leaf.parent_id, node_by_id, f"parent_id {leaf.parent_id} not found for leaf {leaf.node_id}")
+            self.assertIn(
+                leaf.parent_id, node_by_id,
+                f"parent_id {leaf.parent_id} not found for leaf {leaf.node_id}",
+            )
             parent = node_by_id[leaf.parent_id]
             self.assertEqual(parent.level, leaf.level + 1, "Parent should be at level+1")
             self.assertIn(leaf.node_id, parent.child_ids, "Parent child_ids should contain leaf")
@@ -194,7 +200,9 @@ class IndexingPipelineSmokeTests(unittest.TestCase):
 
         # Validate metadata filtering by level works (uses stored level field)
         for lvl in levels:
-            level_results = self.store.query(query_vec, n_results=len(all_nodes), filters={"level": lvl})
+            level_results = self.store.query(
+                query_vec, n_results=len(all_nodes), filters={"level": lvl}
+            )
             expected_at_level = {n.node_id for n in all_nodes if n.level == lvl}
             self.assertEqual({r["chunk_id"] for r in level_results}, expected_at_level)
             self.assertTrue(all(r["metadata"]["level"] == lvl for r in level_results))
@@ -214,9 +222,9 @@ class IndexingPipelineSmokeTests(unittest.TestCase):
     def test_chunker_and_builder_import_paths(self) -> None:
         """Ensure spec-required import paths exist and delegate correctly."""
         # These imports must succeed per issue spec
+        from indexing.builder import build_tree as bt2  # noqa: F401
         from indexing.chunker import chunk_text as ct2  # noqa: F401
         from indexing.ingest import parse_document as pd2  # noqa: F401
-        from indexing.builder import build_tree as bt2  # noqa: F401
 
         self.assertTrue(callable(ct2))
         self.assertTrue(callable(pd2))
@@ -240,19 +248,26 @@ class IndexingEndpointSmokeTests(unittest.TestCase):
         result: list[tuple[str, bytes, str]] = []
         for p in files[:count]:
             data = p.read_bytes()
-            mime = "application/pdf" if p.suffix.lower() == ".pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            mime = (
+                "application/pdf" if p.suffix.lower() == ".pdf"
+                else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
             result.append((p.name, data, mime))
         # If we have fewer than count, create an extra docx on the fly
         while len(result) < count:
-            from docx import Document
             import io
+
+            from docx import Document
 
             doc = Document()
             doc.add_paragraph(f"Generated docx {len(result)} for endpoint test.")
             doc.add_paragraph("Lorem ipsum " * 100)
             bio = io.BytesIO()
             doc.save(bio)
-            result.append((f"generated_{len(result)}.docx", bio.getvalue(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+            result.append(
+                (f"generated_{len(result)}.docx", bio.getvalue(),
+                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            )
         return result
 
     def test_post_index_multipart_single_file(self) -> None:
@@ -265,7 +280,10 @@ class IndexingEndpointSmokeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Patch both possible import locations to use temp dir
             with patch("api.routes.indexing.DEFAULT_PERSIST_PATH", Path(tmpdir)), patch(
-                "api.routes.indexing.ChromaVectorStore", lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(persist_path=tmpdir, collection_name=collection_name)
+                "api.routes.indexing.ChromaVectorStore",
+                lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(
+                    persist_path=tmpdir, collection_name=collection_name
+                ),
             ):
                 # Also patch api.main settings if needed (for graft app path)
                 client = self._client_for_app(backend_app)
@@ -311,11 +329,16 @@ class IndexingEndpointSmokeTests(unittest.TestCase):
         files_to_upload = self._pick_files_for_upload(2)
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("api.routes.indexing.DEFAULT_PERSIST_PATH", Path(tmpdir)), patch(
-                "api.routes.indexing.ChromaVectorStore", lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(persist_path=tmpdir, collection_name=collection_name)
+                "api.routes.indexing.ChromaVectorStore",
+                lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(
+                    persist_path=tmpdir, collection_name=collection_name
+                ),
             ):
                 client = self._client_for_app(backend_app)
                 # Build files list for TestClient: list of tuples
-                files = [("files", (name, content, mime)) for name, content, mime in files_to_upload]
+                files = [
+                    ("files", (name, content, mime)) for name, content, mime in files_to_upload
+                ]
                 resp = client.post("/index", files=files)
                 self.assertEqual(resp.status_code, 200, resp.text)
                 data = resp.json()
@@ -344,7 +367,9 @@ class IndexingEndpointSmokeTests(unittest.TestCase):
                             self.assertIn(pid, by_id, f"Parent {pid} missing for {r['chunk_id']}")
                             parent = by_id[pid]
                             # Parent level should be child level +1
-                            self.assertEqual(parent["metadata"]["level"], r["metadata"]["level"] + 1)
+                            self.assertEqual(
+                                parent["metadata"]["level"], r["metadata"]["level"] + 1
+                            )
                 finally:
                     store.close()
 
@@ -371,23 +396,29 @@ class IndexingEndpointSmokeTests(unittest.TestCase):
             self.skipTest("api.main not importable")
         files_to_upload = self._pick_files_for_upload(1)
         filename, content, mime = files_to_upload[0]
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("config.settings.chroma_path", Path(tmpdir)):
-                # Need to also patch the store class used inside api.main
-                # The module imports ChromaVectorStore via indexing.vector_store inside handler
-                with patch("indexing.vector_store.ChromaVectorStore", lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(persist_path=tmpdir, collection_name=collection_name)):
-                    client = self._client_for_app(graft_app)
-                    resp = client.post(
-                        "/index",
-                        files={"files": (filename, content, mime)},
-                    )
-                    # Graft endpoint should handle multipart and return success
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        # May be multipart response or legacy json; check for multipart shape
-                        if "status" in data and data.get("status") == "success":
-                            self.assertIn("document_ids", data)
-                            self.assertIn("total_chunks", data)
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "config.settings.chroma_path", Path(tmpdir)
+        ):
+            # Need to also patch the store class used inside api.main
+            # The module imports ChromaVectorStore via indexing.vector_store inside handler
+            with patch(
+                "indexing.vector_store.ChromaVectorStore",
+                lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(
+                    persist_path=tmpdir, collection_name=collection_name
+                ),
+            ):
+                client = self._client_for_app(graft_app)
+                resp = client.post(
+                    "/index",
+                    files={"files": (filename, content, mime)},
+                )
+                # Graft endpoint should handle multipart and return success
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # May be multipart response or legacy json; check for multipart shape
+                    if "status" in data and data.get("status") == "success":
+                        self.assertIn("document_ids", data)
+                        self.assertIn("total_chunks", data)
 
 
 if __name__ == "__main__":

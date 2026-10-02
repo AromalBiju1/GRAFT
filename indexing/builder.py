@@ -22,8 +22,9 @@ Chunk input accepts both chunk schemas in circulation:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any
 
 from indexing.chunker import chunk_text
 from indexing.config import (
@@ -78,7 +79,9 @@ def _stub_llm_client(prompt: str) -> str:
     return _summarise_stub([passages])
 
 
-def _chunk_metadata(chunk: Mapping[str, Any], document_id: str, source: str | None) -> dict[str, Any]:
+def _chunk_metadata(
+    chunk: Mapping[str, Any], document_id: str, source: str | None
+) -> dict[str, Any]:
     """Normalise either chunk schema into leaf ``TreeNode.metadata``.
 
     Keeps ``source`` / ``chunk_index`` / ``token_count`` (and legacy
@@ -96,7 +99,9 @@ def _chunk_metadata(chunk: Mapping[str, Any], document_id: str, source: str | No
             metadata[key] = value
     if source and not metadata.get("source"):
         metadata["source"] = source
-    metadata["document_id"] = str(chunk.get("document_id") or metadata.get("document_id") or document_id)
+    metadata["document_id"] = str(
+        chunk.get("document_id") or metadata.get("document_id") or document_id
+    )
     return metadata
 
 

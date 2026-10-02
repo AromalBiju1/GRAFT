@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from api import main as api_main
 from config import settings
+from vector_store import ChromaVectorStore
 
 SAMPLE_TEXT = (
     "GRAFT routes queries by complexity before retrieval. "
@@ -31,11 +32,14 @@ SAMPLE_TEXT = (
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setattr(settings, "embedding_provider", "stub")
     monkeypatch.setattr(settings, "chroma_path", tmp_path / "chroma")
+    monkeypatch.setattr(settings, "warmup_on_startup", False)
     from embeddings import reset_model_cache
 
     reset_model_cache()
     yield TestClient(api_main.app)
-    reset_model_cache()
+    # Release the cached Chroma handle; without this a new client leaks one
+    # open collection per temporary directory for the whole session.
+    ChromaVectorStore.reset_shared_cache()
 
 
 @pytest.fixture
