@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # LLM
     llm_provider: str = Field(default="gemini", description="gemini | openai | local")
     gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
 

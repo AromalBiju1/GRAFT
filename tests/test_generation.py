@@ -1,14 +1,19 @@
 """Tests for answer synthesis (docs/interfaces.md sections 8-9).
 
-Generation is deterministic and must not invent facts, so these tests pin the
-priority rules, evidence dedup, and input validation.
+These tests pin offline priority rules, evidence dedup, input validation,
+grounded prompts, injected clients, and mocked provider dispatch.
 """
 
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import pytest
 
-from generation import synthesize
+from config import settings
+from generation import build_prompt, create_llm_client, synthesize
 from modules.base import ModuleResult
 from tests.modules_helpers import passage
 
@@ -126,3 +131,139 @@ class TestValidation:
     def test_invalid_query_raises(self, query: str | None) -> None:
         with pytest.raises(ValueError):
             synthesize(REQUEST_ID, query, [], [])  # type: ignore[arg-type]
+
+
+class TestLLMSynthesis:
+    def test_callable_receives_grounded_prompt_and_preserves_evidence(self) -> None:
+        context = [passage(f"c{i}", f"retrieved passage {i}") for i in range(7)]
+        modules = [_fact_module(), {"module": "numeric_reasoning", "result": {"sum": 42}}]
+        client = Mock(return_value="Grounded answer")
+        out = synthesize(REQUEST_ID, "What is the total?", context, modules, llm_client=client)
+        prompt = client.call_args.args[0]
+        assert "What is the total?" in prompt
+        assert (
+            "Answer only from the provided context. If the context does not contain the answer, "
+            "say 'Insufficient evidence'."
+        ) in prompt
+        for i in range(5):
+            assert f"retrieved passage {i}" in prompt
+        assert "retrieved passage 5" not in prompt
+        assert "retrieved passage 6" not in prompt
+        serialised = prompt.split("Module results (JSON):\n", 1)[1]
+        expected = [_fact_module().to_dict(), modules[1]]
+        assert json.loads(serialised) == expected
+        assert serialised == json.dumps(expected, indent=2, sort_keys=True, ensure_ascii=False)
+        assert out["answer"] == "Grounded answer"
+        assert out["request_id"] == REQUEST_ID
+        assert out["evidence"] == context + _fact_module().evidence
+        client.assert_called_once()
+
+    def test_generate_object(self) -> None:
+        client = SimpleNamespace(generate=Mock(return_value="Insufficient evidence"))
+        out = synthesize(REQUEST_ID, "q", [], [], llm_client=client)
+        assert out["answer"] == "Insufficient evidence"
+        assert "(No context provided)" in client.generate.call_args.args[0]
+
+    def test_explicit_none_never_loads_a_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("generation.importlib.import_module", Mock(side_effect=AssertionError))
+        monkeypatch.setattr(settings, "llm_provider", "openai")
+        monkeypatch.setattr(settings, "openai_api_key", "not-a-real-key")
+        out = synthesize(REQUEST_ID, "q", [], [_fact_module()], llm_client=None)
+        assert out == {
+            "request_id": REQUEST_ID,
+            "answer": FACT_TEXT,
+            "evidence": _fact_module().evidence,
+        }
+
+    @pytest.mark.parametrize("client", [object(), SimpleNamespace(generate="not callable")])
+    def test_invalid_client(self, client: object) -> None:
+        with pytest.raises(TypeError, match="llm_client"):
+            synthesize(REQUEST_ID, "q", [], [], llm_client=client)
+
+    @pytest.mark.parametrize("answer", [None, {}, "", "  "])
+    def test_invalid_answer(self, answer: object) -> None:
+        with pytest.raises(ValueError, match="non-empty string"):
+            synthesize(REQUEST_ID, "q", [], [], llm_client=lambda prompt: answer)
+
+    def test_client_error_does_not_expose_credentials(self) -> None:
+        client = Mock(side_effect=RuntimeError("secret-api-key"))
+        with pytest.raises(RuntimeError, match="LLM answer synthesis failed") as exc:
+            synthesize(REQUEST_ID, "q", [], [], llm_client=client)
+        assert "secret-api-key" not in str(exc.value)
+        assert exc.value.__suppress_context__
+
+    def test_prompt_handles_missing_text(self) -> None:
+        assert "[1] " in build_prompt("q", [{"chunk_id": "a"}], [])
+
+
+class TestProviderFactory:
+    @pytest.mark.parametrize("provider", ["gemini", "openai"])
+    def test_provider_dispatch(self, provider: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "llm_provider", provider)
+        monkeypatch.setattr(settings, f"{provider}_api_key", "test-only-key")
+        monkeypatch.setattr(settings, f"{provider}_model", "test-model")
+        sdk = Mock()
+        if provider == "gemini":
+            generate = sdk.Client.return_value.models.generate_content
+            generate.return_value = SimpleNamespace(text="Gemini answer")
+        else:
+            generate = sdk.OpenAI.return_value.chat.completions.create
+            generate.return_value = SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content="OpenAI answer"))]
+            )
+        importer = Mock(return_value=sdk)
+        monkeypatch.setattr("generation.importlib.import_module", importer)
+        client = create_llm_client()
+        importer.assert_called_once_with("google.genai" if provider == "gemini" else "openai")
+        constructor = sdk.Client if provider == "gemini" else sdk.OpenAI
+        constructor.assert_called_once_with(api_key="test-only-key")
+        generate.assert_not_called()
+        assert client("prompt") == ("Gemini answer" if provider == "gemini" else "OpenAI answer")
+        if provider == "gemini":
+            generate.assert_called_once_with(model="test-model", contents="prompt")
+        else:
+            generate.assert_called_once_with(
+                model="test-model", messages=[{"role": "user", "content": "prompt"}]
+            )
+        generate.side_effect = RuntimeError("test-only-key")
+        with pytest.raises(RuntimeError, match="LLM request failed") as exc:
+            client("prompt")
+        assert "test-only-key" not in str(exc.value)
+
+    @pytest.mark.parametrize("provider", ["gemini", "openai"])
+    def test_missing_key_does_not_import_sdk(
+        self, provider: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "llm_provider", provider)
+        monkeypatch.setattr(settings, f"{provider}_api_key", None)
+        importer = Mock()
+        monkeypatch.setattr("generation.importlib.import_module", importer)
+        with pytest.raises(ValueError, match=f"settings.{provider}_api_key"):
+            create_llm_client()
+        importer.assert_not_called()
+
+    @pytest.mark.parametrize("provider", ["gemini", "openai"])
+    def test_missing_sdk_is_optional(self, provider: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "llm_provider", provider)
+        monkeypatch.setattr(settings, f"{provider}_api_key", "test-only-key")
+        monkeypatch.setattr("generation.importlib.import_module", Mock(side_effect=ImportError))
+        with pytest.raises(RuntimeError, match="optional"):
+            create_llm_client()
+        assert synthesize(REQUEST_ID, "q", [], [])["answer"].startswith("No answer")
+
+    def test_initialization_error_is_sanitized(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "llm_provider", "openai")
+        monkeypatch.setattr(settings, "openai_api_key", "test-only-key")
+        sdk = SimpleNamespace(OpenAI=Mock(side_effect=RuntimeError("test-only-key")))
+        monkeypatch.setattr("generation.importlib.import_module", Mock(return_value=sdk))
+        with pytest.raises(RuntimeError, match="initialise") as exc:
+            create_llm_client()
+        assert "test-only-key" not in str(exc.value)
+
+    @pytest.mark.parametrize("provider", ["local", "unsupported"])
+    def test_unsupported_provider_is_explicit(
+        self, provider: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "llm_provider", provider)
+        with pytest.raises(ValueError, match="injected|llm_provider"):
+            create_llm_client()

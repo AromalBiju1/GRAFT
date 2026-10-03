@@ -434,6 +434,30 @@ The API should expose a stable response format to the frontend.
 
 ---
 
+### Optional LLM answer synthesis
+
+`generation.synthesize(request_id, query, context, module_results, llm_client=None)`
+preserves deterministic answer priority and evidence deduplication when no client
+is supplied. An injected callable `(prompt) -> str` or object with
+`.generate(prompt) -> str` enables grounded synthesis. The prompt includes the
+query, the first five retrieval hits' `text` fields (retrieval already sorts by
+score), and normalised module results as sorted, indented JSON. All original
+evidence remains in the response, including hits beyond the prompt's five-hit limit.
+
+Install `pip install -e ".[llm]"` for optional provider SDKs. Explicitly call
+`generation.create_llm_client()` and pass its result as `llm_client` to select
+`settings.llm_provider`. Gemini uses `settings.gemini_api_key` and
+`settings.gemini_model`; OpenAI uses `settings.openai_api_key` and
+`settings.openai_model`. SDK imports and client construction occur only inside
+the factory. Missing keys/dependencies and provider failures raise clear errors;
+they do not silently switch to deterministic answers. `local` requires an
+injected adapter returning text; this repository has no local model loader.
+The API and benchmark callers continue using the deterministic default.
+
+LLM answer wording changes token-overlap F1. Runs using LLM synthesis should
+record the provider/model and should not be compared directly with pre-LLM F1
+results. Existing benchmark results are unchanged.
+
 ## 10. API → Frontend
 
 The frontend sends the user's query to the API.
