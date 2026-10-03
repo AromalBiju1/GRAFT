@@ -70,11 +70,11 @@ nodes = index_document("Your text...", document_id="doc_001", source="example.pd
 ```bash
 cd frontend
 npm install
-npm run dev    # Vite at http://localhost:5173, proxies /api -> 127.0.0.1:8000
+npm run dev    # Vite at http://localhost:5173, proxies /query -> 127.0.0.1:8000
 ```
 
-Ensure the API is running on 8000. The UI calls `/api/query` when proxied,
-otherwise falls back to `http://127.0.0.1:8000/query`.
+Ensure the API (`api.main:app`) is running on 8000. The UI calls `POST /query`
+through the Vite development proxy to `http://127.0.0.1:8000`.
 
 ## 6. Sample docs
 
