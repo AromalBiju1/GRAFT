@@ -1,0 +1,723 @@
+{
+  "seed": 42,
+  "n_queries": 20,
+  "metric_definitions": {
+    "accuracy_f1": "Token-overlap F1 of answer vs expected_answer (lower-cased \\w+ tokens, multiset overlap).",
+    "latency_ms": "Wall-clock ms from query string to answer dict, including query embedding (excludes dataset load and embedder warm-up).",
+    "modules_fired": "Number of specialist modules executed for the query.",
+    "precision_at_5": "Hits in top-5 retrieved chunk_ids / min(5, retrieved), against relevant_chunk_ids."
+  },
+  "aggregate": {
+    "graft": {
+      "accuracy_f1": 0.0048,
+      "latency_ms": 25.0599,
+      "modules_fired": 2.3,
+      "precision_at_5": 0.0
+    },
+    "baseline": {
+      "accuracy_f1": 0.0048,
+      "latency_ms": 15.077,
+      "modules_fired": 4.0,
+      "precision_at_5": 0.0
+    }
+  },
+  "per_query": [
+    {
+      "line_number": 1,
+      "query": "What kind of neural network architecture does the ConvS2S paper introduce for sequence-to-sequence learning?",
+      "expected_answer": "It introduces an architecture based entirely on convolutional neural networks.",
+      "relevant_chunk_ids": [
+        "02c28dd890299a6150f0636f39ec822e5638175d5bf3bac89ca3c58eaeb08f45"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 197.828,
+        "modules_fired": 2,
+        "precision_at_5": 0.0,
+        "complexity": "moderate",
+        "retrieval_depth": 1,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 16.085,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 2,
+      "query": "How does the ConvS2S paper say its training computations can be performed across sequence elements?",
+      "expected_answer": "The computations over all elements can be fully parallelized during training.",
+      "relevant_chunk_ids": [
+        "02c28dd890299a6150f0636f39ec822e5638175d5bf3bac89ca3c58eaeb08f45"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 13.879,
+        "modules_fired": 3,
+        "precision_at_5": 0.0,
+        "complexity": "complex",
+        "retrieval_depth": 2,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning",
+          "multi_hop"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 14.216,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 3,
+      "query": "What mechanism does the Transformer use instead of recurrence?",
+      "expected_answer": "It relies entirely on an attention mechanism to draw global dependencies between input and output.",
+      "relevant_chunk_ids": [
+        "4747ce88ddc4d135657340b596c2859fcbb9dee588ca0f107b46c4b63610c511"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 13.538,
+        "modules_fired": 1,
+        "precision_at_5": 0.0,
+        "complexity": "simple",
+        "retrieval_depth": 0,
+        "modules": [
+          "fact_lookup"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 14.728,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 4,
+      "query": "What BLEU score did the Transformer big model report for WMT 2014 English-to-French?",
+      "expected_answer": "41.8 BLEU.",
+      "relevant_chunk_ids": [
+        "d6c929f99c8fbbfe1521d7506206e0c935f27c11a13c780849a8ba2c5f256759"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 15.266,
+        "modules_fired": 2,
+        "precision_at_5": 0.0,
+        "complexity": "moderate",
+        "retrieval_depth": 1,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 15.492,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 5,
+      "query": "In what year was RFC 793 published?",
+      "expected_answer": "1981.",
+      "relevant_chunk_ids": [
+        "cd0186acdf7707661c5d535dc9961f0c1b9c40f5d95aaffd1f240d04cc308393"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 14.662,
+        "modules_fired": 2,
+        "precision_at_5": 0.0,
+        "complexity": "moderate",
+        "retrieval_depth": 1,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 11.307,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 6,
+      "query": "Which earlier TCP specification does RFC 9293 explicitly obsolete?",
+      "expected_answer": "RFC 9293 explicitly obsoletes RFC 793.",
+      "relevant_chunk_ids": [
+        "0844edde99d56da20af368e8eff0700a66a07c4b0f52043d2973a9799e968b31"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 14.731,
+        "modules_fired": 3,
+        "precision_at_5": 0.0,
+        "complexity": "complex",
+        "retrieval_depth": 2,
+        "modules": [
+          "fact_lookup",
+          "contradiction_detection",
+          "numeric_reasoning"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 14.329,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 7,
+      "query": "Which protocol does RFC 2616 specify?",
+      "expected_answer": "HTTP/1.1 (Hypertext Transfer Protocol).",
+      "relevant_chunk_ids": [
+        "ccb7da866f9e811a74e535dcc4ae9eb5558a375a81061651e87074e0bcfd7944"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 13.95,
+        "modules_fired": 2,
+        "precision_at_5": 0.0,
+        "complexity": "moderate",
+        "retrieval_depth": 1,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 14.045,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 8,
+      "query": "Which cipher suite does RFC 5246 identify as mandatory to implement?",
+      "expected_answer": "TLS_RSA_WITH_AES_128_CBC_SHA.",
+      "relevant_chunk_ids": [
+        "d151209ccfa891804d275b72d8ac1dc213089976340df3684c897d531078ebce"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 14.842,
+        "modules_fired": 2,
+        "precision_at_5": 0.0,
+        "complexity": "moderate",
+        "retrieval_depth": 1,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 12.146,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 9,
+      "query": "Using the Transformer big-model BLEU scores for WMT 2014 English-to-German and English-to-French, what is their sum?",
+      "expected_answer": "28.4 + 41.8 = 70.2 BLEU points.",
+      "relevant_chunk_ids": [
+        "d6c929f99c8fbbfe1521d7506206e0c935f27c11a13c780849a8ba2c5f256759"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 17.015,
+        "modules_fired": 2,
+        "precision_at_5": 0.0,
+        "complexity": "complex",
+        "retrieval_depth": 2,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 15.041,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 10,
+      "query": "What is the average of the Transformer base-model BLEU scores for English-to-German and English-to-French in Table 2?",
+      "expected_answer": "(27.3 + 38.1) / 2 = 32.7 BLEU.",
+      "relevant_chunk_ids": [
+        "d6c929f99c8fbbfe1521d7506206e0c935f27c11a13c780849a8ba2c5f256759"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 16.605,
+        "modules_fired": 2,
+        "precision_at_5": 0.0,
+        "complexity": "moderate",
+        "retrieval_depth": 1,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 13.533,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 11,
+      "query": "By how many BLEU points does the Transformer big model exceed the base model on English-to-German?",
+      "expected_answer": "28.4 - 27.3 = 1.1 BLEU points.",
+      "relevant_chunk_ids": [
+        "d6c929f99c8fbbfe1521d7506206e0c935f27c11a13c780849a8ba2c5f256759"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 14.908,
+        "modules_fired": 1,
+        "precision_at_5": 0.0,
+        "complexity": "simple",
+        "retrieval_depth": 0,
+        "modules": [
+          "fact_lookup"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 16.088,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 12,
+      "query": "Comparing RFC 793 with RFC 9293, how many years separate their publication dates?",
+      "expected_answer": "RFC 793 is dated September 1981 and RFC 9293 is dated August 2022, a difference of 41 years.",
+      "relevant_chunk_ids": [
+        "cd0186acdf7707661c5d535dc9961f0c1b9c40f5d95aaffd1f240d04cc308393",
+        "0844edde99d56da20af368e8eff0700a66a07c4b0f52043d2973a9799e968b31"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 15.641,
+        "modules_fired": 3,
+        "precision_at_5": 0.0,
+        "complexity": "complex",
+        "retrieval_depth": 2,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning",
+          "multi_hop"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 15.473,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 13,
+      "query": "How does the specified TLS_RSA_WITH_AES_128_CBC_SHA suite compare between RFC 5246 and RFC 8446?",
+      "expected_answer": "RFC 5246 makes TLS_RSA_WITH_AES_128_CBC_SHA mandatory to implement for TLS 1.2. RFC 8446 removes static RSA cipher suites in TLS 1.3, so the statements describe different protocol versions rather than a same-version conflict.",
+      "relevant_chunk_ids": [
+        "d151209ccfa891804d275b72d8ac1dc213089976340df3684c897d531078ebce",
+        "92d613f6dd5eedfbbe88d80e1dfef892ff472e7371c6b5e4fba7cee6e93405ee"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 15.571,
+        "modules_fired": 3,
+        "precision_at_5": 0.0,
+        "complexity": "complex",
+        "retrieval_depth": 2,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning",
+          "multi_hop"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 16.841,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 14,
+      "query": "Compare the proposed sequence-to-sequence architectures in the ConvS2S and Transformer papers. What is the key difference?",
+      "expected_answer": "ConvS2S uses an entirely convolutional architecture and adds attention modules in decoder layers. The Transformer dispenses with recurrence and convolutional layers in its proposed architecture, relying solely on attention.",
+      "relevant_chunk_ids": [
+        "02c28dd890299a6150f0636f39ec822e5638175d5bf3bac89ca3c58eaeb08f45",
+        "2c08d6f70bd1ff08382232f2be2176439018b63bbe567ba4ca7769d9770cb4bc",
+        "4747ce88ddc4d135657340b596c2859fcbb9dee588ca0f107b46c4b63610c511"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 15.236,
+        "modules_fired": 3,
+        "precision_at_5": 0.0,
+        "complexity": "complex",
+        "retrieval_depth": 2,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning",
+          "multi_hop"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 14.436,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 15,
+      "query": "The ConvS2S paper reports an English-to-German ensemble score of 26.43, while the Transformer paper reports 28.4 for Transformer big. Which is higher and by how much?",
+      "expected_answer": "The Transformer big score is higher: 28.4 - 26.43 = 1.97 BLEU points. These are the scores reported in the respective papers and their model configurations differ.",
+      "relevant_chunk_ids": [
+        "01ec3d43e81310f001603511ab2ca046630a6fb31b87d899966905d135b6788e",
+        "d6c929f99c8fbbfe1521d7506206e0c935f27c11a13c780849a8ba2c5f256759"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 18.192,
+        "modules_fired": 2,
+        "precision_at_5": 0.0,
+        "complexity": "complex",
+        "retrieval_depth": 2,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 17.837,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 16,
+      "query": "For English-to-French, compare the ConvS2S paper's 10-model ensemble score with the Transformer big score. What is the difference?",
+      "expected_answer": "The Transformer big score is 41.8 and the ConvS2S 10-model ensemble score is 41.62, so the difference is 0.18 BLEU points in favor of Transformer big. The compared configurations are not identical.",
+      "relevant_chunk_ids": [
+        "01ec3d43e81310f001603511ab2ca046630a6fb31b87d899966905d135b6788e",
+        "d6c929f99c8fbbfe1521d7506206e0c935f27c11a13c780849a8ba2c5f256759"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 17.389,
+        "modules_fired": 3,
+        "precision_at_5": 0.0,
+        "complexity": "complex",
+        "retrieval_depth": 2,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning",
+          "multi_hop"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 16.444,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 17,
+      "query": "Do the two research papers agree that convolution is required by their proposed sequence-to-sequence model architectures? Compare the claims.",
+      "expected_answer": "No. ConvS2S proposes a model based entirely on convolutions, whereas the Transformer proposes a model based entirely on attention and eschews convolutional and recurrent architectures. These are competing architecture proposals, not contradictory descriptions of one model.",
+      "relevant_chunk_ids": [
+        "02c28dd890299a6150f0636f39ec822e5638175d5bf3bac89ca3c58eaeb08f45",
+        "4747ce88ddc4d135657340b596c2859fcbb9dee588ca0f107b46c4b63610c511"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0513,
+        "latency_ms": 17.603,
+        "modules_fired": 2,
+        "precision_at_5": 0.0,
+        "complexity": "moderate",
+        "retrieval_depth": 1,
+        "modules": [
+          "fact_lookup",
+          "multi_hop"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0513,
+        "latency_ms": 15.932,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 18,
+      "query": "The two papers report ConvS2S ensemble BLEU scores for WMT 2014 English-to-German. Do the reported values agree, and what is their difference?",
+      "expected_answer": "No. The ConvS2S paper reports 26.43, while the Transformer paper's table reports 26.36 for ConvS2S Ensemble, a difference of 0.07 BLEU points. The sources do not explain the discrepancy, so it should be reported rather than silently reconciled.",
+      "relevant_chunk_ids": [
+        "01ec3d43e81310f001603511ab2ca046630a6fb31b87d899966905d135b6788e",
+        "d6c929f99c8fbbfe1521d7506206e0c935f27c11a13c780849a8ba2c5f256759"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0444,
+        "latency_ms": 18.465,
+        "modules_fired": 3,
+        "precision_at_5": 0.0,
+        "complexity": "complex",
+        "retrieval_depth": 2,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning",
+          "multi_hop"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0444,
+        "latency_ms": 17.177,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 19,
+      "query": "Is TLS_RSA_WITH_AES_128_CBC_SHA mandatory or removed? Reconcile what RFC 5246 and RFC 8446 say.",
+      "expected_answer": "RFC 5246 says TLS_RSA_WITH_AES_128_CBC_SHA is mandatory to implement for TLS 1.2. RFC 8446 removes static RSA cipher suites from TLS 1.3. The apparent polarity difference is explained by the protocol-version change.",
+      "relevant_chunk_ids": [
+        "d151209ccfa891804d275b72d8ac1dc213089976340df3684c897d531078ebce",
+        "92d613f6dd5eedfbbe88d80e1dfef892ff472e7371c6b5e4fba7cee6e93405ee"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 17.381,
+        "modules_fired": 2,
+        "precision_at_5": 0.0,
+        "complexity": "moderate",
+        "retrieval_depth": 1,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 15.341,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    },
+    {
+      "line_number": 20,
+      "query": "Across both WMT 2014 language pairs, compare the ConvS2S ensemble results in its paper with Transformer big results. What ranking and combined Transformer big score do the reported numbers imply?",
+      "expected_answer": "Transformer big is higher on both reported pairs: English-to-German 28.4 versus ConvS2S 26.43, and English-to-French 41.8 versus the ConvS2S 10-model ensemble's 41.62. The Transformer big scores sum to 70.2 BLEU points. The configurations differ, so this is a comparison of reported results, not a controlled head-to-head run.",
+      "relevant_chunk_ids": [
+        "01ec3d43e81310f001603511ab2ca046630a6fb31b87d899966905d135b6788e",
+        "d6c929f99c8fbbfe1521d7506206e0c935f27c11a13c780849a8ba2c5f256759"
+      ],
+      "graft": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 18.496,
+        "modules_fired": 3,
+        "precision_at_5": 0.0,
+        "complexity": "complex",
+        "retrieval_depth": 2,
+        "modules": [
+          "fact_lookup",
+          "numeric_reasoning",
+          "multi_hop"
+        ]
+      },
+      "baseline": {
+        "answer": "No context provided.",
+        "accuracy_f1": 0.0,
+        "latency_ms": 15.05,
+        "modules_fired": 4,
+        "precision_at_5": 0.0,
+        "modules": [
+          "fact_lookup",
+          "multi_hop",
+          "numeric_reasoning",
+          "contradiction_detection"
+        ]
+      }
+    }
+  ],
+  "dataset": "data\\sample_docs\\benchmark.jsonl"
+}
