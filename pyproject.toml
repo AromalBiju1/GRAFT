@@ -25,6 +25,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+nli = [
+  "transformers[torch]>=4.40,<5.0",
+  "sentencepiece>=0.2",
+]
 llm = [
   "google-genai>=1.0",
   "openai>=1.0",

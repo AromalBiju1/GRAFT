@@ -17,6 +17,13 @@ pip install -e ".[dev]"        # installs graft + dev deps from pyproject.toml
 pip install -r requirements.txt
 ```
 
+For optional NLI contradiction detection, install `pip install -e ".[nli]"`.
+This installs Transformers with its PyTorch backend and SentencePiece tokenizer.
+The `microsoft/deberta-v3-mnli` model is initialized on the first eligible passage
+pair, never on import. If dependencies or model loading are unavailable, the
+original heuristic remains available. Set `HF_HUB_OFFLINE=1` to prevent Hub
+network access; an uncached model then falls back to the heuristic.
+
 ## 2. Environment file
 
 ```bash
