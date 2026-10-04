@@ -398,6 +398,17 @@ Used for numerical calculations, comparisons, and reasoning over tables.
 
 Used for identifying conflicting claims between retrieved sources.
 
+`ContradictionDetectionModule(nli_client=None)` preserves the common module API
+and returns `{"conflicts": [...], "summary": ...}`. An injectable `NLIClient`
+exposes `predict(premise, hypothesis)` returning `{"label": str, "score": float}`.
+Passage pairs with keyword overlap >= 0.25 are evaluated in context order using
+their full `text` fields. NLI conflicts require a normalized `contradiction`
+label and a score strictly greater than 0.7; each adds `nli_label` and `nli_score`
+and uses `signal="nli_contradiction"`. Existing passage and overlap fields remain.
+Unavailable NLI predictions use the original negation-mismatch heuristic.
+The default model is loaded lazily, with initialization failures cached for the
+process lifetime and fallback reasons logged.
+
 ---
 
 ## 8. Specialist Modules → Generation
