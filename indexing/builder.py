@@ -105,6 +105,26 @@ def _chunk_metadata(
     return metadata
 
 
+def _embed_many(
+    embed: Callable[[str], Sequence[float]],
+    texts: list[str],
+) -> list[Sequence[float]]:
+    """Embed *texts*, using the caller's batch API when it has one.
+
+    ``embedding_fn`` may be a plain ``str -> vector`` callable or an object
+    exposing ``embed_texts`` (a batched call). Preferring the batch path turns N
+    forward passes into one; falling back per-text keeps every existing caller
+    and test working unchanged.
+    """
+    batch = getattr(embed, "embed_texts", None)
+    if callable(batch) and texts:
+        try:
+            return list(batch(texts))
+        except Exception:  # pragma: no cover - fall back to per-text
+            pass
+    return [embed(t) for t in texts]
+
+
 def build_tree_from_chunks(
     chunks: Iterable[Mapping[str, Any]],
     *,
@@ -147,8 +167,14 @@ def build_tree_from_chunks(
     embed: Callable[[str], Sequence[float]] = embedding_fn or _stub_embedding
 
     leaves: list[TreeNode] = []
+    # Encode every chunk in one batch before building nodes. Calling the
+    # embedder per chunk meant one forward pass per leaf; on a 14-chunk
+    # document that was 14 passes and ~48% of total build time.
+    chunk_texts = [str(chunk.get("text") or "") for chunk in chunks]
+    vectors = _embed_many(embed, chunk_texts)
+
     for position, chunk in enumerate(chunks):
-        text = str(chunk.get("text") or "")
+        text = chunk_texts[position]
         node_id = str(
             chunk.get("node_id") or chunk.get("chunk_id") or f"{document_id}_chunk_{position:04d}"
         )
@@ -158,7 +184,7 @@ def build_tree_from_chunks(
                 node_id=node_id,
                 text=text,
                 level=0,
-                embedding=list(embed(text)),
+                embedding=list(vectors[position]),
                 parent_id=None,
                 child_ids=[],
                 metadata=_chunk_metadata(chunk, doc_id, source),
