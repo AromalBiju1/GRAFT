@@ -251,6 +251,74 @@ class TestProviderFactory:
             create_llm_client()
         assert synthesize(REQUEST_ID, "q", [], [])["answer"].startswith("No answer")
 
+    @pytest.mark.parametrize("provider", ["gemini", "openai"])
+    def test_empty_completion_is_rejected(
+        self, provider: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An SDK returning None must raise, not hand None back as a str.
+
+        Both SDKs yield None for an empty completion (blocked prompt, safety
+        filter, no candidate). synthesize() is annotated to return str.
+        """
+        monkeypatch.setattr(settings, "llm_provider", provider)
+        monkeypatch.setattr(settings, f"{provider}_api_key", "test-only-key")
+
+        if provider == "gemini":
+            sdk = SimpleNamespace(
+                Client=Mock(
+                    return_value=SimpleNamespace(
+                        models=SimpleNamespace(
+                            generate_content=Mock(return_value=SimpleNamespace(text=None))
+                        )
+                    )
+                )
+            )
+        else:
+            message = SimpleNamespace(content=None)
+            sdk = SimpleNamespace(
+                OpenAI=Mock(
+                    return_value=SimpleNamespace(
+                        chat=SimpleNamespace(
+                            completions=SimpleNamespace(
+                                create=Mock(
+                                    return_value=SimpleNamespace(
+                                        choices=[SimpleNamespace(message=message)]
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        monkeypatch.setattr("generation.importlib.import_module", Mock(return_value=sdk))
+
+        generate = create_llm_client()
+        with pytest.raises(RuntimeError, match="empty response"):
+            generate("a prompt")
+
+    def test_whitespace_only_completion_is_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "llm_provider", "openai")
+        monkeypatch.setattr(settings, "openai_api_key", "test-only-key")
+        message = SimpleNamespace(content="   \n  ")
+        sdk = SimpleNamespace(
+            OpenAI=Mock(
+                return_value=SimpleNamespace(
+                    chat=SimpleNamespace(
+                        completions=SimpleNamespace(
+                            create=Mock(
+                                return_value=SimpleNamespace(choices=[SimpleNamespace(message=message)])
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        monkeypatch.setattr("generation.importlib.import_module", Mock(return_value=sdk))
+
+        generate = create_llm_client()
+        with pytest.raises(RuntimeError, match="empty response"):
+            generate("a prompt")
+
     def test_initialization_error_is_sanitized(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(settings, "llm_provider", "openai")
         monkeypatch.setattr(settings, "openai_api_key", "test-only-key")

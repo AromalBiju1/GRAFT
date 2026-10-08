@@ -71,14 +71,22 @@ def create_llm_client() -> Callable[[str], str]:
     def generate(prompt: str) -> str:
         try:
             if provider == "gemini":
-                return client.models.generate_content(model=model, contents=prompt).text
-            response = client.chat.completions.create(
-                model=model, messages=[{"role": "user", "content": prompt}]
-            )
-            return response.choices[0].message.content
+                text = client.models.generate_content(model=model, contents=prompt).text
+            else:
+                response = client.chat.completions.create(
+                    model=model, messages=[{"role": "user", "content": prompt}]
+                )
+                text = response.choices[0].message.content
         except Exception:
             # SDK error messages can contain credentials; do not propagate them.
             raise RuntimeError(f"The {provider} LLM request failed.") from None
+
+        # Both SDKs can return None for an empty completion (a blocked prompt, a
+        # safety filter, or no candidate). Returning that unchecked would hand a
+        # None to synthesize(), which is annotated to return str.
+        if not isinstance(text, str) or not text.strip():
+            raise RuntimeError(f"The {provider} LLM returned an empty response.")
+        return text
 
     return generate
 
@@ -130,12 +138,12 @@ def synthesize(
             raise TypeError("llm_client must be callable or expose .generate(prompt)")
         prompt = build_prompt(query, context, normalised)
         try:
-            answer = generate(prompt)
+            llm_answer = generate(prompt)
         except Exception:
             raise RuntimeError("LLM answer synthesis failed.") from None
-        if not isinstance(answer, str) or not answer.strip():
+        if not isinstance(llm_answer, str) or not llm_answer.strip():
             raise ValueError("llm_client must return a non-empty string")
-        return {"request_id": request_id, "answer": answer, "evidence": evidence}
+        return {"request_id": request_id, "answer": llm_answer, "evidence": evidence}
 
     # Stub answer: prioritise contradiction summary if present, else fact_lookup result,
     # else first context passage.
