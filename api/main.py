@@ -28,6 +28,7 @@ from embeddings import active_provider, collection_name, embed_text, embedding_d
 from generation import synthesize
 from indexing.config import MAX_DOCUMENT_ID_LENGTH
 from indexing.pipeline import build_tree, index_document, persist_tree_nodes
+from logging_config import configure_logging
 from modules.contradiction_detection import ContradictionDetectionModule
 from modules.fact_lookup import FactLookupModule
 from modules.multi_hop import MultiHopModule
@@ -80,6 +81,7 @@ def _warmup() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    configure_logging()
     if settings.warmup_on_startup:
         _warmup()
     yield

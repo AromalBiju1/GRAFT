@@ -26,8 +26,22 @@ jobs:
           pip install -r requirements.txt
           pip install 'pytest>=8.0' 'pytest-asyncio>=0.23' ruff mypy
 
+      - name: Report which embedder is in use
+        # If this says "stub", the real model did not load and the integration
+        # tests below will skip. CI must fail rather than quietly pass without
+        # ever exercising semantic retrieval.
+        run: |
+          python3 -c "
+          from embeddings import active_provider, embedding_dim
+          provider = active_provider()
+          print(f'embedder={provider} dim={embedding_dim()}')
+          raise SystemExit(0 if provider == 'sentence-transformers' else 1)
+          "
+
       - name: Run test suite
-        run: python3 -m pytest tests/ -v --tb=short
+        # -rs so any skip is listed rather than hidden; the embedder check above
+        # guarantees the integration tests are not silently skipped.
+        run: python3 -m pytest tests/ -v --tb=short -rs
 
       - name: Lint
         # Runs even when tests fail, so a PR gets both signals at once.

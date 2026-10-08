@@ -117,6 +117,9 @@ def persist_tree_nodes(
 
 
 def main() -> None:  # pragma: no cover
+    from logging_config import configure_logging
+
+    configure_logging()
     parser = argparse.ArgumentParser(description="GRAFT indexing pipeline")
     parser.add_argument("input", help="Path to a text/PDF file or '-' for stdin")
     parser.add_argument("--document-id", default="doc_001")
