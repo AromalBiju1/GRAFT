@@ -186,7 +186,15 @@ The wrapper copies the separate `document_id` argument into stored metadata.
 Although the adapter defaults a missing document ID to `""`, the wrapper
 rejects missing, empty, or whitespace-only document IDs with `ValueError`.
 Callers must supply a non-empty document ID for every node, including summaries.
-Writes are sequential: an error does not roll back previously persisted nodes.
+
+Nodes are written in a single batch via `ChromaVectorStore.insert_many`, so a
+whole tree costs one Chroma round trip rather than one per node. Every record is
+validated before anything is written: if any node is invalid, the call raises
+and the collection is left untouched. A node missing its embedding still raises
+`ValueError("Node <node_id> missing required embedding vector.")`.
+
+`ChromaVectorStore.insert` remains available for writing a single record and
+behaves as before.
 
 Use the wrapper's metadata filter to select a tree level:
 
@@ -806,6 +814,15 @@ The interim `graft.*` namespace is removed; `graft.X` paths become `X`.
 No behaviour, wire format or field changed — the move is import-path only, and
 each destination module already held the real implementation (the `graft.*`
 counterparts were forwarders). The PyPI distribution keeps the name `graft`.
+
+Contract update **v1.6** — batched indexing. Section 3 no longer promises
+sequential writes: `persist_tree_nodes` now writes a whole tree in one Chroma
+round trip through the new `ChromaVectorStore.insert_many`, and validates every
+record before writing any. `embeddings.embed_text` additionally exposes
+`embed_texts`, which `indexing.builder` uses to encode a document in one call
+when the embedder offers it. Both changes are performance only — no signature,
+response shape, metric definition or retrieval result moved. `insert()` still
+exists and is unchanged for single-record writes.
 
 ---
 
