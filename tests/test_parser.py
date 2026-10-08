@@ -13,7 +13,7 @@ from indexing.parser import DocumentParsingError, parse_document
 class ParseDocumentTests(unittest.TestCase):
     def test_pdf_parsing_returns_readable_text(self) -> None:
         sample = (
-            Path(__file__).parents[2]
+            Path(__file__).resolve().parents[1]
             / "data"
             / "sample_docs"
             / "rfc-editor.org_rfc_rfc793.txt.pdf"
@@ -45,9 +45,10 @@ class ParseDocumentTests(unittest.TestCase):
             parse_document("does-not-exist.pdf")
 
     def test_unsupported_extension_raises_value_error(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".txt") as file:
-            with self.assertRaisesRegex(ValueError, "Unsupported document type"):
-                parse_document(file.name)
+        with tempfile.NamedTemporaryFile(suffix=".txt") as file, self.assertRaisesRegex(
+            ValueError, "Unsupported document type"
+        ):
+            parse_document(file.name)
 
     def test_pdf_without_extractable_text_raises_value_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

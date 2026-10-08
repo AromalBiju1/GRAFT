@@ -14,7 +14,6 @@ from typing import Any
 
 from modules.base import ModuleResult
 
-
 MAX_CONTEXT_CHUNKS = 5
 GROUNDING_INSTRUCTION = (
     "Answer only from the provided context. If the context does not contain the answer, "

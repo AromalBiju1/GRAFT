@@ -226,3 +226,8 @@ __marimo__/
 node_modules/
 frontend/dist/
 db/graft_logs.db
+
+# Benchmark run output. `--output` is caller-chosen; a run's numbers are not a
+# committed fixture, and a stale committed run invites quoting numbers that no
+# longer reproduce.
+results.json
