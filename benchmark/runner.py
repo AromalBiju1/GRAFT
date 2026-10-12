@@ -36,6 +36,20 @@ back to its exact definition:
 
 Both ends are injectable (``embedder``, ``retriever``) so CI runs with no
 network and no vector store. Exit codes: 0 success, 1 dataset format error.
+
+Ablation mode measures which *component* earns GRAFT its margin, instead of
+only comparing whole systems::
+
+    python3 -m benchmark.runner --ablation \\
+        --dataset data/sample_docs/benchmark.jsonl \\
+        --output results.json
+
+``--ablation`` replays the same dataset once per setup in
+:data:`ABLATION_SETUPS`, changing exactly one component each time and holding
+the questions, embedder, and seed fixed. Two tables are printed: the raw
+metrics per setup, and each setup's delta against normal GRAFT. The metric
+definitions are unchanged, so graft's numbers are directly comparable with
+:func:`run_benchmark`.
 """
 
 from __future__ import annotations
@@ -50,7 +64,7 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from benchmark import measure_latency, modules_fired_count, retrieval_precision_at_k
 from generation import synthesize
@@ -59,7 +73,8 @@ from modules.contradiction_detection import ContradictionDetectionModule
 from modules.fact_lookup import FactLookupModule
 from modules.multi_hop import MultiHopModule
 from modules.numeric_reasoning import NumericReasoningModule
-from router import route
+from retrieval import MAX_RETRIEVAL_DEPTH
+from router import AVAILABLE_MODULES, route
 
 #: Default RNG seed. Recorded in the results file.
 DEFAULT_SEED = 42
@@ -228,6 +243,89 @@ def _score(
 
 
 # --------------------------------------------------------------------------- #
+# Ablation setups
+# --------------------------------------------------------------------------- #
+#: Name of the reference setup that every other setup is measured against.
+REFERENCE_SETUP = "graft"
+
+
+@dataclass(frozen=True, slots=True)
+class AblationSetup:
+    """One configuration of the GRAFT pipeline, changing a single component.
+
+    ``retrieval_depth`` is passed straight to :func:`router.route` as its
+    ``retrieval_depth_override`` keyword: ``None`` keeps the router's
+    complexity-derived depth, an ``int`` pins the depth and ignores the router.
+    ``disabled_modules`` is dropped from the activated set — which handles
+    "never run this module" without a separate code path — while
+    ``force_all_modules`` runs the full registry instead of the routed subset.
+    """
+
+    name: str
+    description: str
+    retrieval_depth: int | None = None
+    disabled_modules: frozenset[str] = frozenset()
+    force_all_modules: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the JSON-serialisable definition recorded in the results file."""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "retrieval_depth": self.retrieval_depth,
+            "disabled_modules": sorted(self.disabled_modules),
+            "force_all_modules": self.force_all_modules,
+        }
+
+
+#: Every setup ``--ablation`` runs, in report order. ``graft`` is first because
+#: it is the reference the delta table is computed against.
+ABLATION_SETUPS: tuple[AblationSetup, ...] = (
+    AblationSetup(REFERENCE_SETUP, "Normal GRAFT pipeline (router depth, routed modules)."),
+    AblationSetup(
+        "no_gating",
+        "Always search the deepest level, ignoring the router depth.",
+        retrieval_depth=MAX_RETRIEVAL_DEPTH,
+    ),
+    AblationSetup(
+        "depth_always_0",
+        "Search only raw chunks.",
+        retrieval_depth=0,
+    ),
+    AblationSetup(
+        "all_modules",
+        "Always run all four reasoning modules.",
+        force_all_modules=True,
+    ),
+    AblationSetup(
+        "no_contradiction",
+        "Disable contradiction detection.",
+        disabled_modules=frozenset({"contradiction_detection"}),
+    ),
+    AblationSetup(
+        "no_multi_hop",
+        "Disable multi-hop reasoning.",
+        disabled_modules=frozenset({"multi_hop"}),
+    ),
+)
+
+#: Setup names, in report order.
+SETUP_NAMES: tuple[str, ...] = tuple(s.name for s in ABLATION_SETUPS)
+
+
+def get_setup(name: str) -> AblationSetup:
+    """Return the registered setup called *name*.
+
+    The message lists the valid names, so a typo is actionable. :class:`KeyError`
+    otherwise, matching ``registry[name]`` elsewhere in this module.
+    """
+    for setup in ABLATION_SETUPS:
+        if setup.name == name:
+            return setup
+    raise KeyError(f"unknown ablation setup {name!r}; expected one of {', '.join(SETUP_NAMES)}")
+
+
+# --------------------------------------------------------------------------- #
 # Pipelines
 # --------------------------------------------------------------------------- #
 def _module_registry() -> dict[str, BaseModule]:
@@ -249,6 +347,7 @@ def run_graft(
     embedder: Embedder,
     retriever: Retriever,
     registry: dict[str, BaseModule],
+    setup: AblationSetup | None = None,
 ) -> dict[str, Any]:
     """Answer a query with router-selected retrieval depth and specialist modules.
 
@@ -257,25 +356,43 @@ def run_graft(
     Return the synthesized ``request_id``, ``answer``, and ``evidence``, plus
     raw ``retrieval``, serialized ``module_results``, and the ``routing`` decision.
 
+    ``setup`` overrides the depth and the activated module list for ablation
+    (:class:`AblationSetup`). ``None`` runs the unmodified GRAFT pipeline.
+
     Invalid queries, blank request IDs, and invalid router thresholds raise
     :class:`ValueError`. Errors from the supplied callbacks and modules propagate.
     """
-    decision = route(query)
+    depth_override = None if setup is None else setup.retrieval_depth
+    decision = route(query, retrieval_depth_override=depth_override)
+    activated = _setup_modules(setup, decision.activated_modules)
     retrieved = retriever(
         embedder(query),
         n_results=GRAFT_N_RESULTS,
         retrieval_depth=decision.retrieval_depth,
     )
     module_results: list[ModuleResult] = [
-        registry[name](request_id, query, retrieved)
-        for name in decision.activated_modules
-        if name in registry
+        registry[name](request_id, query, retrieved) for name in activated if name in registry
     ]
     final = synthesize(request_id, query, retrieved, module_results)
     final["retrieval"] = retrieved
     final["module_results"] = [r.to_dict() for r in module_results]
     final["routing"] = decision.to_dict()
     return final
+
+
+def _setup_modules(setup: AblationSetup | None, activated: list[str]) -> list[str]:
+    """Return the module names *setup* runs, given the router's selection.
+
+    ``None`` passes the router's selection through untouched, so the normal
+    pipeline is unchanged. Otherwise the full registry is used when
+    ``force_all_modules`` is set, then ``disabled_modules`` is filtered out.
+    Module order is preserved so generation sees results in a stable order
+    across setups.
+    """
+    if setup is None:
+        return list(activated)
+    names = list(AVAILABLE_MODULES) if setup.force_all_modules else list(activated)
+    return [name for name in names if name not in setup.disabled_modules]
 
 
 @contextmanager
@@ -315,6 +432,22 @@ def aggregate(per_query: list[dict[str, Any]], system: str) -> dict[str, float]:
     return {key: _mean([q[system][key] for q in per_query]) for key in METRIC_KEYS}
 
 
+def _seed_rngs(seed: int) -> None:
+    """Reset Python's global RNG and NumPy's, when available, to ``seed``.
+
+    NumPy is imported lazily because it is optional: a downstream module may or
+    may not have pulled it in. Neither RNG's previous state is restored, so a
+    caller seeding mid-run discards whatever state it was relying on.
+    """
+    random.seed(seed)
+    try:
+        import numpy as np
+
+        np.random.seed(seed)
+    except ImportError:  # pragma: no cover
+        pass
+
+
 # --------------------------------------------------------------------------- #
 # Orchestration
 # --------------------------------------------------------------------------- #
@@ -341,13 +474,7 @@ def run_benchmark(
     module-wide retriever, restoring it even on failure. Errors from seeding,
     warm-up, or either pipeline propagate without returning partial results.
     """
-    random.seed(seed)
-    try:  # numpy is optional; seed it if a downstream module pulls it in
-        import numpy as np
-
-        np.random.seed(seed)
-    except ImportError:  # pragma: no cover
-        pass
+    _seed_rngs(seed)
 
     if embedder is None:
         from embeddings import embed_text as embedder  # type: ignore[assignment]
@@ -413,6 +540,157 @@ def run_benchmark(
 
 
 # --------------------------------------------------------------------------- #
+# Ablation orchestration
+# --------------------------------------------------------------------------- #
+def run_setup(
+    records: Sequence[BenchmarkRecord],
+    setup: AblationSetup,
+    *,
+    embedder: Embedder | None = None,
+    retriever: Retriever | None = None,
+) -> list[dict[str, Any]]:
+    """Score *setup* on *records* and return one row per query.
+
+    Reseed the RNGs to :data:`DEFAULT_SEED` first so every setup starts from
+    identical RNG state -- required for the setups to differ *only* by the
+    component under investigation. The embedder is warmed up so its one-off
+    model load stays out of the first query's latency, exactly as in
+    :func:`run_benchmark`.
+
+    Each row carries the four metrics from :data:`METRIC_KEYS`, the ``setup``
+    name it came from, and the depth and modules actually executed -- so a
+    saved results file always says which configuration produced a measurement.
+    """
+    _seed_rngs(DEFAULT_SEED)
+
+    if embedder is None:
+        from embeddings import embed_text as embedder  # type: ignore[assignment]
+    if retriever is None:
+        from retrieval import retrieve as retriever  # type: ignore[assignment]
+    assert embedder is not None and retriever is not None
+
+    registry = _module_registry()
+    embedder("warm-up")
+
+    rows: list[dict[str, Any]] = []
+    for idx, rec in enumerate(records, start=1):
+        out, ms = measure_latency(
+            run_graft,
+            f"bench_{idx:04d}_{setup.name}",
+            rec.query,
+            embedder,
+            retriever,
+            registry,
+            setup,
+        )
+        rows.append(
+            {
+                "setup": setup.name,
+                **_score(out["answer"], out["retrieval"], out["module_results"], rec, ms),
+                "retrieval_depth": out["routing"]["retrieval_depth"],
+                "modules": [m["module"] for m in out["module_results"]],
+            }
+        )
+    return rows
+
+
+def aggregate_setups(per_setup: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, float]]:
+    """Mean each metric per setup, keyed by setup name.
+
+    Empty input, or a setup with no rows, gives 0.0 for every metric. Missing
+    metric keys in a row raise :class:`KeyError`.
+    """
+    return {
+        name: {key: _mean([row[key] for row in rows]) for key in METRIC_KEYS}
+        for name, rows in per_setup.items()
+    }
+
+
+def compute_deltas(aggregate_by_setup: dict[str, dict[str, float]]) -> dict[str, dict[str, float]]:
+    """Return every setup's metrics minus :data:`REFERENCE_SETUP`'s, rounded.
+
+    ``delta = setup - reference``, so a negative accuracy delta means the
+    component under test was carrying accuracy. ``latency_ms`` is a mean of
+    per-query timings and is therefore no longer a per-query value; the result
+    carries an aggregate instead of per-query latency.
+
+    The reference's own deltas are all ``0.0``. A missing reference or an
+    unequal set of metrics raises :class:`KeyError`.
+    """
+    reference = aggregate_by_setup[REFERENCE_SETUP]
+    return {
+        name: {key: round(metrics[key] - reference[key], 4) for key in METRIC_KEYS}
+        for name, metrics in aggregate_by_setup.items()
+    }
+
+
+def run_ablation(
+    records: Sequence[BenchmarkRecord],
+    setups: Sequence[AblationSetup] = ABLATION_SETUPS,
+    *,
+    embedder: Embedder | None = None,
+    retriever: Retriever | None = None,
+    seed: int = DEFAULT_SEED,
+) -> dict[str, Any]:
+    """Run every ablation *setup* on *records* and return the results dict.
+
+    ``setups`` defaults to :data:`ABLATION_SETUPS` and must include
+    :data:`REFERENCE_SETUP`, since the delta table is measured against it. An
+    empty sequence raises :class:`ValueError`.
+
+    Every setup answers the same questions with the same ``embedder`` and
+    ``retriever`` and the same RNG seed -- only the component under
+    investigation changes. Defaults are the real :func:`embeddings.embed_text`
+    and :func:`retrieval.retrieve`; pass fakes to run offline.
+
+    Return the seed, query count, metric definitions, one entry per setup
+    recording what it changed, per-setup aggregates, per-setup deltas against
+    the reference, and the raw per-query rows. Per query the setup is recorded
+    in the ``setup`` field so a saved measurement is never ambiguous.
+
+    Errors from any setup's pipeline propagate without returning partial results.
+    """
+    if not setups:
+        raise ValueError("setups must not be empty")
+    names = [s.name for s in setups]
+    if len(set(names)) != len(names):
+        raise ValueError("setup names must be unique")
+    if REFERENCE_SETUP not in names:
+        raise ValueError(f"setups must include the reference setup {REFERENCE_SETUP!r}")
+
+    per_setup = {
+        setup.name: run_setup(records, setup, embedder=embedder, retriever=retriever)
+        for setup in setups
+    }
+    aggregate_by_setup = aggregate_setups(per_setup)
+
+    # Per query the setups are grouped under their name so a setup's raw rows
+    # stay together, and each row repeats its own `setup` name.
+    per_query = [
+        {
+            "line_number": rec.line_number,
+            "query": rec.query,
+            "expected_answer": rec.expected_answer,
+            "relevant_chunk_ids": list(rec.relevant_chunk_ids),
+            "setups": {name: rows[idx] for name, rows in per_setup.items()},
+        }
+        for idx, rec in enumerate(records)
+    ]
+
+    return {
+        "mode": "ablation",
+        "seed": seed,
+        "n_queries": len(records),
+        "metric_definitions": METRIC_DEFINITIONS,
+        "reference_setup": REFERENCE_SETUP,
+        "setups": {setup.name: setup.to_dict() for setup in setups},
+        "aggregate": aggregate_by_setup,
+        "deltas": compute_deltas(aggregate_by_setup),
+        "per_query": per_query,
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Output
 # --------------------------------------------------------------------------- #
 def format_summary(results: dict[str, Any]) -> str:
@@ -454,6 +732,83 @@ def format_summary(results: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+class _MetricColumn(NamedTuple):
+    """One metric column of the ablation report tables."""
+
+    key: str  # a METRIC_KEYS entry
+    absolute_fmt: str
+    delta_fmt: str
+    header: str
+    delta_header: str
+    width: int
+
+
+#: Report columns, in display order. Shared by both ablation tables so their
+#: columns stay aligned.
+_ABLATION_COLUMNS: tuple[_MetricColumn, ...] = (
+    _MetricColumn("accuracy_f1", "{:.3f}", "{:+.3f}", "Accuracy", "dAccuracy", 10),
+    _MetricColumn("latency_ms", "{:.1f}", "{:+.1f}", "Latency ms", "dLatency ms", 12),
+    _MetricColumn("modules_fired", "{:.2f}", "{:+.2f}", "Modules", "dModules", 9),
+    _MetricColumn("precision_at_5", "{:.3f}", "{:+.3f}", "P@5", "dP@5", 8),
+)
+
+
+def _metric_cells(name: str, name_col: int, metrics: dict[str, float], *, delta: bool) -> str:
+    """Format a setup name followed by its four metrics as fixed-width cells."""
+    cells = "".join(
+        f"{(c.delta_fmt if delta else c.absolute_fmt).format(metrics[c.key]):>{c.width}}"
+        for c in _ABLATION_COLUMNS
+    )
+    return f"{name:<{name_col}}{cells}"
+
+
+def _metric_header(name_col: int, *, delta: bool) -> str:
+    """Header row matching :func:`_metric_cells` column for column."""
+    cells = "".join(
+        f"{(c.delta_header if delta else c.header):>{c.width}}" for c in _ABLATION_COLUMNS
+    )
+    return f"{'Setup':<{name_col}}{cells}"
+
+
+def format_ablation_summary(results: dict[str, Any]) -> str:
+    """Render both ablation console tables: absolute metrics, then deltas.
+
+    The first table gives each setup's four metrics plus what that setup
+    changed. The second gives every setup's change against
+    :data:`REFERENCE_SETUP`, which is the point of the mode: a negative
+    accuracy delta means the ablated component was carrying accuracy.
+
+    Expected a result dict from :func:`run_ablation`.
+    """
+    setups = results["setups"]
+    names = list(results["aggregate"])
+    name_col = max(len(name) for name in names) + 2
+    ref = results["reference_setup"]
+    rule = "-" * (name_col + 39)
+
+    lines = [
+        f"Ablation over {results['n_queries']} queries (seed={results['seed']})",
+        f"Each setup changes one component; the rest is held fixed "
+        f"(same questions, same embedder, seed={results['seed']}).",
+        "",
+        _metric_header(name_col, delta=False) + "  What changed",
+        rule,
+    ]
+    for name in names:
+        cells = _metric_cells(name, name_col, results["aggregate"][name], delta=False)
+        lines.append(f"{cells}  {setups[name]['description']}")
+
+    lines += [
+        "",
+        f"Change vs {ref} (setup - {ref}; a negative accuracy means the component helped)",
+        _metric_header(name_col, delta=True),
+        rule,
+    ]
+    for name in names:
+        lines.append(_metric_cells(name, name_col, results["deltas"][name], delta=True))
+    return "\n".join(lines)
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -462,7 +817,8 @@ def main(
 ) -> int:
     """Run the benchmark CLI using *argv*, or process arguments when it is ``None``.
 
-    Forward optional callbacks to :func:`run_benchmark`. Create output parent
+    Forward optional callbacks to :func:`run_benchmark`, or to
+    :func:`run_ablation` when ``--ablation`` is passed. Create output parent
     directories, overwrite the output JSON file, print a summary, and return 0
     on success. A :class:`DatasetFormatError` prints an error to stderr and
     returns 1 before running the benchmark or writing output.
@@ -477,6 +833,12 @@ def main(
     parser.add_argument("--dataset", required=True, type=Path, help="JSONL benchmark file")
     parser.add_argument("--output", required=True, type=Path, help="where to write results JSON")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="RNG seed (default: 42)")
+    parser.add_argument(
+        "--ablation",
+        action="store_true",
+        help="run every ablation setup on the dataset instead of GRAFT vs baseline, "
+        "and report each setup's metrics plus its delta vs normal GRAFT",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -485,12 +847,17 @@ def main(
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_DATASET_ERROR
 
-    results = run_benchmark(records, embedder=embedder, retriever=retriever, seed=args.seed)
+    if args.ablation:
+        results = run_ablation(records, embedder=embedder, retriever=retriever, seed=args.seed)
+        summary = format_ablation_summary(results)
+    else:
+        results = run_benchmark(records, embedder=embedder, retriever=retriever, seed=args.seed)
+        summary = format_summary(results)
     results["dataset"] = str(args.dataset)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(format_summary(results))
+    print(summary)
     print(f"\nResults written to {args.output}")
     return EXIT_OK
 
