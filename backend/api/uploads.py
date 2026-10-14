@@ -3,10 +3,15 @@
 Events: status {file, state}, token {text}, error {message}, done {}.
 Wire-up points marked TODO(graft) adapt to your existing modules.
 """
-import asyncio, json, re, uuid
+import asyncio
+import json
+import re
+import uuid
 from pathlib import Path
+from typing import Annotated
+
 from fastapi import APIRouter, File, Form, UploadFile
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter()
 
@@ -39,7 +44,8 @@ async def save_upload(f: UploadFile) -> Path:
         while chunk := await f.read(1024 * 256):
             size += len(chunk)
             if size > MAX_BYTES:
-                out.close(); dest.unlink(missing_ok=True)
+                out.close()
+                dest.unlink(missing_ok=True)
                 raise ValueError(f"{safe_name(f.filename)}: larger than {MAX_BYTES // 2**20} MB.")
             out.write(chunk)
     return dest
@@ -64,7 +70,11 @@ async def answer_stream(question: str):
 
 
 @router.post("/chat")
-async def chat(prompt: str = Form(""), files: list[UploadFile] = File(default=[])):
+async def chat(
+    prompt: Annotated[str, Form()] = "",
+    files: Annotated[list[UploadFile], File()] | None = None,
+):
+    files = files or []
     if not prompt.strip() and not files:
         return JSONResponse({"detail": "Send a question or attach a document."}, status_code=400)
     if len(files) > MAX_FILES:
@@ -76,7 +86,8 @@ async def chat(prompt: str = Form(""), files: list[UploadFile] = File(default=[]
         for f in files:
             saved.append(await save_upload(f))
     except ValueError as e:
-        for p in saved: p.unlink(missing_ok=True)
+        for p in saved:
+            p.unlink(missing_ok=True)
         return JSONResponse({"detail": str(e)}, status_code=415 if "type" in str(e) else 413)
 
     async def events():
@@ -95,8 +106,11 @@ async def chat(prompt: str = Form(""), files: list[UploadFile] = File(default=[]
         finally:
             yield sse("done", {})
 
-    return StreamingResponse(events(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 # api/main.py:  from api.uploads import router as uploads_router; app.include_router(uploads_router)
 # Requires: pip install python-multipart

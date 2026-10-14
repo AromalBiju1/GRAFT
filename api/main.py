@@ -17,12 +17,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
-from api.uploads import router as uploads_router
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.schemas import EvidenceItem, HealthResponse, QueryRequest, QueryResponse
+from api.uploads import router as uploads_router
 from config import settings
 from db.logger import init_db, log_query
 from embeddings import active_provider, collection_name, embed_text, embedding_dim
@@ -37,7 +37,8 @@ from modules.numeric_reasoning import NumericReasoningModule
 from retrieval import retrieve
 from router import route
 from vector_store import ChromaVectorStore
-from version import __version__ 
+from version import __version__
+
 logger = logging.getLogger(__name__)
 
 #: Upload-specific chunking. Smaller than the indexing default so freshly
@@ -391,7 +392,7 @@ async def index_document_endpoint(request: Request) -> dict[str, Any]:
         "nodes_indexed": len(nodes),
         "nodes": [n.to_dict() for n in nodes[:20]],
     }
-app.include_router(uploads_router)   
+app.include_router(uploads_router)
 
 def main() -> None:  # pragma: no cover
     import uvicorn

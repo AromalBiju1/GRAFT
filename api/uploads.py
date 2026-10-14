@@ -1,13 +1,23 @@
-import asyncio, json, uuid
+import asyncio
+import json
+import uuid
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from typing import Annotated, Any
+
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from config import UPLOAD_DIR, MAX_UPLOAD_MB, ALLOWED_EXT, ALLOWED_MIME
-
 router = APIRouter(prefix="/api")
 FILES: dict[str, dict] = {}  # in-memory for now; persist later via db/logger.py
+UPLOAD_DIR = Path("data/uploads")
+MAX_UPLOAD_MB = 10
+ALLOWED_EXT = {".pdf", ".docx", ".txt"}
+ALLOWED_MIME = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+}
 
 
 def _sniff_ok(head: bytes, ext: str) -> bool:
@@ -19,7 +29,7 @@ def _sniff_ok(head: bytes, ext: str) -> bool:
 
 
 @router.post("/files", status_code=201)
-async def upload(bg: BackgroundTasks, file: UploadFile = File(...)):
+async def upload(bg: BackgroundTasks, file: Annotated[UploadFile, File(...)]):
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXT or file.content_type not in ALLOWED_MIME:
         raise HTTPException(415, "Only PDF, DOCX or TXT files are supported")
@@ -55,10 +65,16 @@ async def _process(fid: str):
     rec = FILES[fid]
     rec["status"] = "parsing"
     try:
-        from indexing.ingest import ingest_file       # ADAPT: your real parse function
-        from indexing.pipeline import index_text      # ADAPT: your real pipeline entry
-        text = await asyncio.to_thread(ingest_file, rec["path"])
-        await asyncio.to_thread(index_text, text, fid)  # fid = document_id
+        from indexing.ingest import ingest_document
+        from indexing.pipeline import index_document
+
+        chunks = await asyncio.to_thread(
+            ingest_document,
+            rec["path"],
+            document_id=fid,
+        )
+        text = "\n\n".join(chunk["text"] for chunk in chunks)
+        await asyncio.to_thread(index_document, text, document_id=fid, source=rec["name"])
         rec["status"] = "ready"
     except Exception as e:
         rec["status"], rec["error"] = "failed", str(e)
@@ -76,7 +92,7 @@ class ChatReq(BaseModel):
     file_ids: list[str] = []
 
 
-def _sse(event: str, data: dict) -> str:
+def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
@@ -109,5 +125,8 @@ async def chat(req: ChatReq):
         except Exception as e:
             yield _sse("error", {"message": str(e)})
 
-    return StreamingResponse(events(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

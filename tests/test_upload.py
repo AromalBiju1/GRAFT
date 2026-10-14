@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
+
 from api.main import app
+
 client = TestClient(app)
 
 def test_rejects_wrong_type():
