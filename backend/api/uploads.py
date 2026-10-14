@@ -5,6 +5,7 @@ Wire-up points marked TODO(graft) adapt to your existing modules.
 """
 import asyncio
 import json
+import logging
 import re
 import uuid
 from pathlib import Path
@@ -14,6 +15,7 @@ from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path("data/uploads")          # move to config.py
 MAX_BYTES = 10 * 1024 * 1024               # 10 MB, configurable
@@ -88,7 +90,11 @@ async def chat(
     except ValueError as e:
         for p in saved:
             p.unlink(missing_ok=True)
-        return JSONResponse({"detail": str(e)}, status_code=415 if "type" in str(e) else 413)
+        status_code = 415 if "type" in str(e) else 413
+        detail = "Unsupported file type. Use PDF, DOCX or TXT." if status_code == 415 else (
+            f"File is larger than {MAX_BYTES // 2**20} MB."
+        )
+        return JSONResponse({"detail": detail}, status_code=status_code)
 
     async def events():
         try:
@@ -101,8 +107,9 @@ async def chat(
                     yield sse("token", {"text": piece})
         except asyncio.CancelledError:
             raise  # client pressed Stop
-        except Exception as e:  # report failure back into the chat
-            yield sse("error", {"message": f"Something went wrong: {e}"})
+        except Exception:  # report failure back into the chat
+            logger.exception("Upload chat stream failed")
+            yield sse("error", {"message": "Something went wrong"})
         finally:
             yield sse("done", {})
 

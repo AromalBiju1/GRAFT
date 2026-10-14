@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import uuid
 from pathlib import Path
 from typing import Annotated, Any
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/api")
 FILES: dict[str, dict] = {}  # in-memory for now; persist later via db/logger.py
+logger = logging.getLogger(__name__)
 UPLOAD_DIR = Path("data/uploads")
 MAX_UPLOAD_MB = 10
 ALLOWED_EXT = {".pdf", ".docx", ".txt"}
@@ -122,8 +124,9 @@ async def chat(req: ChatReq):
                 yield _sse("token", {"t": word + " "})
                 await asyncio.sleep(0.01)
             yield _sse("done", {})
-        except Exception as e:
-            yield _sse("error", {"message": str(e)})
+        except Exception:
+            logger.exception("Chat stream failed")
+            yield _sse("error", {"message": "Something went wrong while processing the chat"})
 
     return StreamingResponse(
         events(),
