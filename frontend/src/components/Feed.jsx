@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 
+/** Render chat messages with assistant Markdown and follow updates when near the bottom. */
 export default function Feed({ messages, busy }) {
   const end = useRef(null), box = useRef(null);
   useEffect(() => {            // follow the stream unless the user scrolled up

@@ -21,10 +21,12 @@ ALLOWED = {
 
 
 def sse(event: str, data: dict) -> str:
+    """Encode an event name and JSON payload as a Server-Sent Events frame."""
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
 def safe_name(name: str) -> str:
+    """Sanitize the filename's final path component and limit it to 100 characters."""
     return re.sub(r"[^A-Za-z0-9._-]", "_", Path(name or "file").name)[:100]
 
 
@@ -65,6 +67,11 @@ async def answer_stream(question: str):
 
 @router.post("/chat")
 async def chat(prompt: str = Form(""), files: list[UploadFile] = File(default=[])):
+    """Validate and save multipart uploads, then stream processing and answers.
+
+    Return HTTP errors for missing input, too many files, or invalid uploads
+    before starting the SSE response.
+    """
     if not prompt.strip() and not files:
         return JSONResponse({"detail": "Send a question or attach a document."}, status_code=400)
     if len(files) > MAX_FILES:
@@ -80,6 +87,7 @@ async def chat(prompt: str = Form(""), files: list[UploadFile] = File(default=[]
         return JSONResponse({"detail": str(e)}, status_code=415 if "type" in str(e) else 413)
 
     async def events():
+        """Emit file status and answer pieces, reporting errors before a done event."""
         try:
             for p in saved:
                 yield sse("status", {"file": p.name, "state": "processing"})

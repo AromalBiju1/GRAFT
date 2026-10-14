@@ -1,6 +1,7 @@
 import { useRef, useEffect } from "react";
 import { ACCEPT, MAX_MB } from "../api";
 
+/** Render an expanding message field, file picker, and send or stop controls. */
 export default function InputBar({ value, onChange, onSend, onStop, onPick, busy, canSend }) {
   const ta = useRef(null), picker = useRef(null);
 
@@ -10,6 +11,7 @@ export default function InputBar({ value, onChange, onSend, onStop, onPick, busy
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }, [value]);
 
+  /** Submit on Enter when allowed, leaving Shift+Enter available for newlines. */
   const key = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend && !busy) onSend(); }
   };

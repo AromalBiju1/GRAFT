@@ -1,7 +1,9 @@
 import { fmtSize } from "../api";
 
+/** Choose a PDF, DOCX, or fallback TXT label from the attachment's MIME type. */
 const kind = (t) => (t.includes("pdf") ? "PDF" : t.includes("word") ? "DOCX" : "TXT");
 
+/** Show attachment metadata, upload progress, processing state, and queued-file removal. */
 export default function AttachmentTray({ files, progress, onRemove }) {
   if (!files.length) return null;
   return (

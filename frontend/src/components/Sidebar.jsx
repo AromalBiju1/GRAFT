@@ -1,3 +1,4 @@
+/** Render the sidebar toggle, chat history, new-chat action, and active session's files. */
 export default function Sidebar({ open, onToggle, sessions, activeId, onSelect, onNew, files }) {
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>

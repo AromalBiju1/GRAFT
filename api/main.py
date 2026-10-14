@@ -234,6 +234,7 @@ async def index_document_endpoint(request: Request) -> dict[str, Any]:
         # Robust detection: starlette stores files as UploadFile-like objects;
         # fastapi.UploadFile may not be identical to starlette's, so use duck typing.
         def _is_file_like(obj: object) -> bool:
+            """Recognize named upload objects by their filename and read attributes."""
             return (
                 hasattr(obj, "filename")
                 and hasattr(obj, "read")
@@ -279,11 +280,13 @@ async def index_document_endpoint(request: Request) -> dict[str, Any]:
         from indexing.ingest import parse_document
 
         def _sanitize(filename: str) -> str:
+            """Build a bounded document ID from a filename, falling back to doc_001."""
             stem = Path(filename).stem or "doc_001"
             s = re.sub(r"[^a-zA-Z0-9_-]", "_", stem).strip("_")
             return s[:MAX_DOCUMENT_ID_LENGTH] or "doc_001"
 
         def _levels(nodes: list[Any]) -> dict[str, int]:
+            """Count nodes by level with labels for leaf, root, and summary levels."""
             if not nodes:
                 return {}
             max_lvl = max(n.level for n in nodes)
@@ -392,6 +395,7 @@ async def index_document_endpoint(request: Request) -> dict[str, Any]:
 app.include_router(uploads_router)   
 
 def main() -> None:  # pragma: no cover
+    """Start Uvicorn using the configured API host, port, and reload setting."""
     import uvicorn
 
     uvicorn.run(

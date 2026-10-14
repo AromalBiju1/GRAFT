@@ -11,6 +11,7 @@ FILES: dict[str, dict] = {}  # in-memory for now; persist later via db/logger.py
 
 
 def _sniff_ok(head: bytes, ext: str) -> bool:
+    """Check PDF/ZIP signatures or reject NUL bytes in a text file header."""
     if ext == ".pdf":
         return head.startswith(b"%PDF")
     if ext == ".docx":
@@ -20,6 +21,11 @@ def _sniff_ok(head: bytes, ext: str) -> bool:
 
 @router.post("/files", status_code=201)
 async def upload(bg: BackgroundTasks, file: UploadFile = File(...)):
+    """Validate and save an upload, queue processing, and return its metadata.
+
+    Reject unsupported types or invalid content with HTTP 415 and files over
+    the configured size limit with HTTP 413.
+    """
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXT or file.content_type not in ALLOWED_MIME:
         raise HTTPException(415, "Only PDF, DOCX or TXT files are supported")
@@ -52,6 +58,7 @@ async def upload(bg: BackgroundTasks, file: UploadFile = File(...)):
 
 
 async def _process(fid: str):
+    """Attempt ingestion and indexing, recording readiness or failure in FILES."""
     rec = FILES[fid]
     rec["status"] = "parsing"
     try:
@@ -66,6 +73,7 @@ async def _process(fid: str):
 
 @router.get("/files/{fid}")
 def file_status(fid: str):
+    """Return stored file metadata, or raise HTTP 404 for an unknown ID."""
     if fid not in FILES:
         raise HTTPException(404, "Unknown file")
     return FILES[fid]
@@ -77,10 +85,12 @@ class ChatReq(BaseModel):
 
 
 def _sse(event: str, data: dict) -> str:
+    """Encode an event name and JSON payload as a Server-Sent Events frame."""
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
 def run_query(prompt: str, doc_ids: list[str]) -> dict:
+    """Reserve the document-scoped query hook; currently raise NotImplementedError."""
     # ADAPT: call the same logic /query uses (router -> retrieval -> modules -> generation),
     # restricted to doc_ids. Return {"answer": str, "routing": {...}, "evidence": [...]}.
     raise NotImplementedError
@@ -88,7 +98,9 @@ def run_query(prompt: str, doc_ids: list[str]) -> dict:
 
 @router.post("/chat")
 async def chat(req: ChatReq):
+    """Stream document status, query metadata, answer words, or errors over SSE."""
     async def events():
+        """Wait for requested files, then emit query results or a processing error."""
         try:
             for fid in req.file_ids:
                 while FILES.get(fid, {}).get("status") in ("uploaded", "parsing"):

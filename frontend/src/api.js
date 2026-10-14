@@ -1,5 +1,9 @@
 // One XHR does upload progress (upload.onprogress), SSE parsing (onprogress on
 // the response) and cancellation (abort) with a single mechanism.
+/**
+ * Send a multipart chat request and report upload progress, SSE events, and errors.
+ * Call onDone when the request finishes or is aborted; return a cancellation function.
+ */
 export function sendChat({ prompt, files, onUpload, onEvent, onError, onDone }) {
   const xhr = new XMLHttpRequest();
   const body = new FormData();
@@ -7,6 +11,7 @@ export function sendChat({ prompt, files, onUpload, onEvent, onError, onDone }) 
   files.forEach((f) => body.append("files", f.file));
 
   let seen = 0, buf = "";
+  /** Dispatch complete SSE frames while retaining a partial frame for the next update. */
   const parse = () => {
     buf += xhr.responseText.slice(seen);
     seen = xhr.responseText.length;
@@ -40,7 +45,10 @@ export const ACCEPT = ".pdf,.docx,.txt";
 export const MAX_MB = 10;
 const OK = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"];
 
-// Returns { accepted, errors } so the UI can show why a file was refused.
+/**
+ * Return queued file records and validation errors for supported files up to MAX_MB.
+ * Skip files whose name and size match an existing attachment.
+ */
 export function validate(list, existing) {
   const accepted = [], errors = [];
   for (const file of list) {
@@ -51,4 +59,5 @@ export function validate(list, existing) {
   }
   return { accepted, errors };
 }
+/** Format bytes as rounded KB (at least 1 KB) or MB with one decimal place. */
 export const fmtSize = (b) => (b < 1048576 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1048576).toFixed(1)} MB`);

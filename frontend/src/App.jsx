@@ -7,8 +7,10 @@ import { sendChat, validate } from "./api";
 import "./chat.css";
 
 const GREETING = { id: "g", role: "assistant", text: "Hi! Upload a document, then ask me anything about it." };
+/** Create a chat session with a unique ID, greeting, and empty file list. */
 const newSession = () => ({ id: crypto.randomUUID(), title: "New chat", messages: [GREETING], files: [] });
 
+/** Render chat sessions and manage attachments, upload progress, and streamed replies. */
 export default function App() {
   const [sessions, setSessions] = useState([newSession()]);
   const [activeId, setActiveId] = useState(sessions[0].id);
@@ -22,14 +24,17 @@ export default function App() {
   const cancel = useRef(null), depth = useRef(0);
 
   const active = sessions.find((s) => s.id === activeId);
+  /** Apply a session transformation to the active conversation. */
   const patch = useCallback((fn) => setSessions((all) => all.map((s) => (s.id === activeId ? fn(s) : s))), [activeId]);
 
+  /** Queue accepted files and display any validation errors. */
   const addFiles = (list) => {
     const { accepted, errors } = validate(list, queue);
     setQueue((q) => [...q, ...accepted]);
     setNotice(errors.join(" "));
   };
 
+  /** Add messages, send the prompt and attachments, and update the streamed reply. */
   const send = () => {
     const prompt = text.trim(), files = queue;
     const aid = crypto.randomUUID();
@@ -39,7 +44,9 @@ export default function App() {
       messages: [...s.messages, { id: crypto.randomUUID(), role: "user", text: prompt, files: files.map((f) => f.file.name) },
                  { id: aid, role: "assistant", text: "" }],
     }));
+    /** Apply a transformation to this request's assistant message. */
     const setAssistant = (fn) => patch((s) => ({ ...s, messages: s.messages.map((m) => (m.id === aid ? fn(m) : m)) }));
+    /** Update the processing state of every queued attachment. */
     const setFiles = (state) => setQueue((q) => q.map((f) => ({ ...f, state })));
     setText(""); setNotice(""); setBusy(true); setProgress(0); setFiles("uploading");
 
