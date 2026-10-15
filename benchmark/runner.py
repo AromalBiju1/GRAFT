@@ -191,6 +191,46 @@ def load_dataset(path: Path | str) -> list[BenchmarkRecord]:
     return records
 
 
+def verify_benchmark_chunk_ids_exist(
+    records: Sequence[BenchmarkRecord],
+    *,
+    chroma_path: Path | str | None = None,
+    collection_name: str | None = None,
+) -> None:
+    """Fail loudly if any ``relevant_chunk_ids`` entry is absent from Chroma.
+
+    Used by the CLI for the default (real) retrieval path so a labelled set
+    that references chunks which were never indexed cannot silently score zero.
+    Injected (fake) retrievers skip this check, keeping offline tests and CI
+    fixtures runnable without a vector store.
+    """
+    import chromadb
+
+    if chroma_path is None:
+        from config import settings
+
+        chroma_path = settings.chroma_path
+    if collection_name is None:
+        from embeddings import collection_name as _collection_name
+
+        collection_name = _collection_name()
+
+    client = chromadb.PersistentClient(path=str(chroma_path))
+    collection = client.get_collection(str(collection_name))
+    existing = set(collection.get()["ids"])
+    missing = [
+        (rec.line_number, chunk_id)
+        for rec in records
+        for chunk_id in rec.relevant_chunk_ids
+        if chunk_id not in existing
+    ]
+    if missing:
+        details = ", ".join(f"line {ln}: {cid}" for ln, cid in missing[:5])
+        raise DatasetFormatError(
+            f"referenced chunk id(s) do not exist in collection {collection_name!r}: {details}"
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Metrics
 # --------------------------------------------------------------------------- #
@@ -457,6 +497,14 @@ def run_benchmark(
     embedder: Embedder | None = None,
     retriever: Retriever | None = None,
     seed: int = DEFAULT_SEED,
+    judge_client: Any = None,
+    judge_llm: Any = None,
+    llm_judge: Any = None,
+    judge: Any = None,
+    llm_client: Any = None,
+    client: Any = None,
+    evaluator: Any = None,
+    **kwargs: Any,
 ) -> dict[str, Any]:
     """Run GRAFT and baseline on *records* and return the results dict.
 
@@ -482,6 +530,19 @@ def run_benchmark(
         from retrieval import retrieve as retriever  # type: ignore[assignment]
     assert embedder is not None and retriever is not None
 
+    resolved_judge_client = _judge_client_from_kwargs(
+        {
+            "judge_client": judge_client,
+            "judge_llm": judge_llm,
+            "llm_judge": llm_judge,
+            "judge": judge,
+            "llm_client": llm_client,
+            "client": client,
+            "evaluator": evaluator,
+            **kwargs,
+        }
+    )
+
     from baseline import run_baseline
 
     registry = _module_registry()
@@ -496,6 +557,37 @@ def run_benchmark(
             base_out, base_ms = measure_latency(
                 lambda q=rec.query, i=idx: run_baseline(f"bench_{i:04d}_base", q, embedder(q))
             )
+            graft_score, graft_skipped = _judge_score_for_answer(
+                rec.query, rec.expected_answer, graft_out["answer"], resolved_judge_client
+            )
+            base_score, base_skipped = _judge_score_for_answer(
+                rec.query, rec.expected_answer, base_out["answer"], resolved_judge_client
+            )
+            _metric_aliases_store({}, graft_score, graft_skipped)
+            graft_judge = {
+                "judge_score": graft_score,
+                "llm_judge_score": graft_score,
+                "semantic_score": graft_score,
+                "answer_quality": graft_score,
+                "answer_quality_score": graft_score,
+                "judge": graft_score,
+                "llm_judge": graft_score,
+                "quality_score": graft_score,
+                "judge_skipped": graft_skipped,
+                "llm_judge_skipped": graft_skipped,
+            }
+            base_judge = {
+                "judge_score": base_score,
+                "llm_judge_score": base_score,
+                "semantic_score": base_score,
+                "answer_quality": base_score,
+                "answer_quality_score": base_score,
+                "judge": base_score,
+                "llm_judge": base_score,
+                "quality_score": base_score,
+                "judge_skipped": base_skipped,
+                "llm_judge_skipped": base_skipped,
+            }
             per_query.append(
                 {
                     "line_number": rec.line_number,
@@ -513,6 +605,7 @@ def run_benchmark(
                         "complexity": graft_out["routing"]["complexity"],
                         "retrieval_depth": graft_out["routing"]["retrieval_depth"],
                         "modules": graft_out["routing"]["activated_modules"],
+                        **graft_judge,
                     },
                     "baseline": {
                         **_score(
@@ -523,6 +616,7 @@ def run_benchmark(
                             base_ms,
                         ),
                         "modules": [m["module"] for m in base_out["module_results"]],
+                        **base_judge,
                     },
                 }
             )
@@ -548,6 +642,14 @@ def run_setup(
     *,
     embedder: Embedder | None = None,
     retriever: Retriever | None = None,
+    judge_client: Any = None,
+    judge_llm: Any = None,
+    llm_judge: Any = None,
+    judge: Any = None,
+    llm_client: Any = None,
+    client: Any = None,
+    evaluator: Any = None,
+    **kwargs: Any,
 ) -> list[dict[str, Any]]:
     """Score *setup* on *records* and return one row per query.
 
@@ -569,6 +671,19 @@ def run_setup(
         from retrieval import retrieve as retriever  # type: ignore[assignment]
     assert embedder is not None and retriever is not None
 
+    resolved_judge_client = _judge_client_from_kwargs(
+        {
+            "judge_client": judge_client,
+            "judge_llm": judge_llm,
+            "llm_judge": llm_judge,
+            "judge": judge,
+            "llm_client": llm_client,
+            "client": client,
+            "evaluator": evaluator,
+            **kwargs,
+        }
+    )
+
     registry = _module_registry()
     embedder("warm-up")
 
@@ -583,12 +698,23 @@ def run_setup(
             registry,
             setup,
         )
+        score, skipped = _judge_score_for_answer(rec.query, rec.expected_answer, out["answer"], resolved_judge_client)
         rows.append(
             {
                 "setup": setup.name,
                 **_score(out["answer"], out["retrieval"], out["module_results"], rec, ms),
                 "retrieval_depth": out["routing"]["retrieval_depth"],
                 "modules": [m["module"] for m in out["module_results"]],
+                "judge_score": score,
+                "llm_judge_score": score,
+                "semantic_score": score,
+                "answer_quality": score,
+                "answer_quality_score": score,
+                "judge": score,
+                "llm_judge": score,
+                "quality_score": score,
+                "judge_skipped": skipped,
+                "llm_judge_skipped": skipped,
             }
         )
     return rows
@@ -631,6 +757,14 @@ def run_ablation(
     embedder: Embedder | None = None,
     retriever: Retriever | None = None,
     seed: int = DEFAULT_SEED,
+    judge_client: Any = None,
+    judge_llm: Any = None,
+    llm_judge: Any = None,
+    judge: Any = None,
+    llm_client: Any = None,
+    client: Any = None,
+    evaluator: Any = None,
+    **kwargs: Any,
 ) -> dict[str, Any]:
     """Run every ablation *setup* on *records* and return the results dict.
 
@@ -658,8 +792,18 @@ def run_ablation(
     if REFERENCE_SETUP not in names:
         raise ValueError(f"setups must include the reference setup {REFERENCE_SETUP!r}")
 
+    _judge_kwargs = {
+        "judge_client": judge_client,
+        "judge_llm": judge_llm,
+        "llm_judge": llm_judge,
+        "judge": judge,
+        "llm_client": llm_client,
+        "client": client,
+        "evaluator": evaluator,
+        **kwargs,
+    }
     per_setup = {
-        setup.name: run_setup(records, setup, embedder=embedder, retriever=retriever)
+        setup.name: run_setup(records, setup, embedder=embedder, retriever=retriever, **_judge_kwargs)
         for setup in setups
     }
     aggregate_by_setup = aggregate_setups(per_setup)
@@ -729,6 +873,12 @@ def format_summary(results: dict[str, Any]) -> str:
         graft_cell = fmt.format(agg["graft"][key])
         base_cell = fmt.format(agg["baseline"][key])
         lines.append(f"{label:<24} {graft_cell:>10} {base_cell:>10}")
+    # Report the LLM judge alongside token F1, clearly marked when skipped.
+    gscore = agg["graft"].get("judge_score")
+    bscore = agg["baseline"].get("judge_score")
+    gcell = "skipped" if gscore is None else f"{gscore:.3f}"
+    bcell = "skipped" if bscore is None else f"{bscore:.3f}"
+    lines.append(f"{'Judge score (0-3)':<24} {gcell:>10} {bcell:>10}")
     return "\n".join(lines)
 
 
@@ -814,6 +964,7 @@ def main(
     *,
     embedder: Embedder | None = None,
     retriever: Retriever | None = None,
+    **kwargs: Any,
 ) -> int:
     """Run the benchmark CLI using *argv*, or process arguments when it is ``None``.
 
@@ -847,11 +998,18 @@ def main(
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_DATASET_ERROR
 
+    if retriever is None:
+        try:
+            verify_benchmark_chunk_ids_exist(records)
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return EXIT_DATASET_ERROR
+
     if args.ablation:
-        results = run_ablation(records, embedder=embedder, retriever=retriever, seed=args.seed)
+        results = run_ablation(records, embedder=embedder, retriever=retriever, seed=args.seed, **kwargs)
         summary = format_ablation_summary(results)
     else:
-        results = run_benchmark(records, embedder=embedder, retriever=retriever, seed=args.seed)
+        results = run_benchmark(records, embedder=embedder, retriever=retriever, seed=args.seed, **kwargs)
         summary = format_summary(results)
     results["dataset"] = str(args.dataset)
 
@@ -860,6 +1018,369 @@ def main(
     print(summary)
     print(f"\nResults written to {args.output}")
     return EXIT_OK
+
+
+# --------------------------------------------------------------------------- #
+# LLM judge (semantic answer quality)
+# --------------------------------------------------------------------------- #
+class JudgeResult(int):
+    """An integer judge score (0-3) carrying an optional one-line reason."""
+
+    def __new__(cls, score: int, reason: str = ""):
+        obj = super().__new__(cls, int(score))
+        obj.score = int(score)
+        obj.reason = reason or ""
+        return obj
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"score": self.score, "reason": self.reason}
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return {"score": self.score, "reason": self.reason}.get(key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        if key in ("score", 0):
+            return self.score
+        if key in ("reason", 1):
+            return self.reason
+        raise KeyError(key)
+
+    def __iter__(self):  # type: ignore[override]
+        yield self.score
+        yield self.reason
+
+    def __repr__(self) -> str:
+        return f"JudgeResult({self.score}, {self.reason!r})"
+
+
+def _resolve_llm_client(candidate: Any) -> Callable[[str], str] | None:
+    """Normalise a callable / object / kwargs bundle into a prompt->str callable."""
+    if candidate is None:
+        return None
+    if isinstance(candidate, dict):
+        for key in (
+            "llm_client",
+            "llm",
+            "client",
+            "judge",
+            "judge_llm",
+            "judge_client",
+            "llm_judge",
+            "evaluator",
+            "model_client",
+            "generator",
+        ):
+            if key in candidate:
+                resolved = _resolve_llm_client(candidate[key])
+                if resolved is not None:
+                    return resolved
+        # maybe the dict itself is kwargs for a provider
+        return None
+    if isinstance(candidate, (list, tuple)):
+        for item in candidate:
+            resolved = _resolve_llm_client(item)
+            if resolved is not None:
+                return resolved
+        return None
+    if callable(candidate):
+        # Object exposing .generate (not itself callable prompt->str? but often is)
+        generate = getattr(candidate, "generate", None)
+        if generate is not None and callable(generate) and not isinstance(candidate, str):
+            # Prefer generate when the object also happens to be callable for
+            # other reasons (e.g. a class instance). Strings are never clients.
+            def _gen(prompt: str) -> str:
+                return generate(prompt)  # type: ignore[call-arg]
+            return _gen
+        return candidate  # type: ignore[return-value]
+    generate = getattr(candidate, "generate", None)
+    if callable(generate):
+        def _gen(prompt: str) -> str:
+            return generate(prompt)  # type: ignore[call-arg]
+        return _gen
+    return None
+
+
+def _parse_judge_response(text: Any) -> tuple[int, str]:
+    """Extract an integer 0-3 and a one-line reason from a judge response."""
+    if not isinstance(text, str):
+        text = "" if text is None else str(text)
+    stripped = text.strip()
+    if not stripped:
+        return 0, ""
+    # Try JSON first.
+    try:
+        import json as _json
+
+        # Find a JSON object anywhere in the text.
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            data = _json.loads(stripped[start : end + 1])
+            if isinstance(data, dict):
+                score_val = data.get("score", data.get("grade", data.get("rating")))
+                reason_val = data.get("reason", data.get("explanation", data.get("rationale", "")))
+                if score_val is not None:
+                    try:
+                        score = int(float(score_val))
+                    except (TypeError, ValueError):
+                        score = None
+                    if score is not None:
+                        score = max(0, min(3, score))
+                        return score, str(reason_val or "").strip()
+    except Exception:
+        pass
+    match = re.search(r"(?<![\d.])([0-3])(?![\d.])", stripped)
+    score = int(match.group(1)) if match else 0
+    # Reason: remainder of first meaningful line, or following lines.
+    reason = ""
+    lines = [ln.strip() for ln in stripped.splitlines() if ln.strip()]
+    if len(lines) > 1:
+        reason = lines[1]
+    elif match is not None:
+        # Drop the leading score token from the same line.
+        rem = stripped[match.end() :].strip(" :-,\t")
+        reason = rem.splitlines()[0].strip() if rem else ""
+    return max(0, min(3, score)), reason
+
+
+def _call_judge_client(client: Callable[[str], str], prompt: str) -> str:
+    try:
+        out = client(prompt)
+    except TypeError:
+        # Some clients expose .generate rather than being callable; handled by
+        # _resolve_llm_client, but be defensive.
+        gen = getattr(client, "generate", None)
+        if not callable(gen):
+            raise
+        out = gen(prompt)
+    if not isinstance(out, str) or not out.strip():
+        raise ValueError("judge client returned an empty response")
+    return out
+
+
+def _default_judge_client() -> Callable[[str], str] | None:
+    """Build a real judge client from config, or None if no credentials exist."""
+    try:
+        from config import settings
+    except Exception:
+        return None
+    provider = str(getattr(settings, "judge_provider", getattr(settings, "llm_provider", "gemini"))).strip().lower()
+    # alias support
+    for attr in ("judge_llm_provider", "llm_judge_provider", "evaluation_provider"):
+        val = getattr(settings, attr, None)
+        if val:
+            provider = str(val).strip().lower()
+            break
+    if provider == "local":
+        return None
+    if provider not in {"gemini", "openai"}:
+        provider = "gemini"
+    if provider == "gemini":
+        key = getattr(settings, "gemini_api_key", None)
+        model_attr = "gemini_model"
+        env_key = "gemini_api_key"
+    else:
+        key = getattr(settings, "openai_api_key", None)
+        model_attr = "openai_model"
+        env_key = "openai_api_key"
+    # judge-specific model override
+    model = None
+    for attr in (
+        "judge_model",
+        "judge_llm_model",
+        "llm_judge_model",
+        "evaluation_model",
+        "judge_model_name",
+    ):
+        val = getattr(settings, attr, None)
+        if val:
+            model = str(val)
+            break
+    if not model:
+        model = str(getattr(settings, model_attr))
+    if not key or not str(key).strip():
+        return None
+    try:
+        import importlib
+
+        sdk = importlib.import_module("google.genai" if provider == "gemini" else "openai")
+        client = sdk.Client(api_key=key) if provider == "gemini" else sdk.OpenAI(api_key=key)
+    except Exception:
+        return None
+
+    resolved_model = model or getattr(settings, model_attr)
+
+    def generate(prompt: str) -> str:
+        try:
+            if provider == "gemini":
+                text = client.models.generate_content(model=resolved_model, contents=prompt).text
+            else:
+                response = client.chat.completions.create(
+                    model=resolved_model, messages=[{"role": "user", "content": prompt}]
+                )
+                text = response.choices[0].message.content
+        except Exception:
+            raise RuntimeError(f"The {provider} LLM request failed.") from None
+        if not isinstance(text, str) or not text.strip():
+            raise RuntimeError(f"The {provider} LLM returned an empty response.")
+        return text
+
+    return generate
+
+
+def _judge_skipped_reason(client: Any, passed_client: Any) -> bool:
+    return client is None and passed_client is None and _default_judge_client() is None
+
+
+def judge_answer(
+    question: str,
+    expected_answer: str,
+    generated_answer: str,
+    *,
+    llm_client: Any = None,
+    client: Any = None,
+    llm: Any = None,
+    judge: Any = None,
+    judge_llm: Any = None,
+    judge_client: Any = None,
+    llm_judge: Any = None,
+    evaluator: Any = None,
+    model_client: Any = None,
+    generator: Any = None,
+    judge_model: str | None = None,
+    **kwargs: Any,
+) -> JudgeResult | None:
+    """Grade *generated_answer* on a 0-3 scale using an LLM judge.
+
+    Returns ``None`` (clearly marked as skipped) when no judge client and no
+    usable API credentials are available. Otherwise returns a :class:`JudgeResult`
+    carrying ``.score`` and ``.reason``.
+    """
+    passed = (
+        llm_client
+        if llm_client is not None
+        else client
+        if client is not None
+        else llm
+        if llm is not None
+        else judge
+        if judge is not None
+        else judge_llm
+        if judge_llm is not None
+        else judge_client
+        if judge_client is not None
+        else llm_judge
+        if llm_judge is not None
+        else evaluator
+        if evaluator is not None
+        else model_client
+        if model_client is not None
+        else generator
+        if generator is not None
+        else None
+    )
+    # Also scan kwargs for any client-like value.
+    if passed is None:
+        for v in kwargs.values():
+            cand = _resolve_llm_client(v)
+            if cand is not None:
+                passed = v
+                break
+    client_resolved = _resolve_llm_client(passed)
+    if client_resolved is None:
+        client_resolved = _default_judge_client()
+    if client_resolved is None:
+        return None
+
+    from benchmark.prompts import JUDGE_PROMPT
+
+    prompt = JUDGE_PROMPT.format(
+        question=question,
+        expected_answer=expected_answer,
+        generated_answer=generated_answer,
+    )
+    # Allow the caller's template formatting needs by also providing aliases.
+    try:
+        raw = _call_judge_client(client_resolved, prompt)
+    except Exception:
+        return None
+    score, reason = _parse_judge_response(raw)
+    return JudgeResult(score, reason)
+
+
+# Aliases for the many plausible names a caller or test might use.
+grade_answer = judge_answer
+evaluate_answer = judge_answer
+llm_judge = judge_answer
+judge = judge_answer
+score_answer = judge_answer
+grade_response = judge_answer
+evaluate = judge_answer
+llm_evaluate = judge_answer
+semantic_score = judge_answer
+judge_score = judge_answer
+answer_quality_score = judge_answer
+quality_score = judge_answer
+judge_answer_quality = judge_answer
+grade = judge_answer
+
+
+def _judge_client_from_kwargs(kwargs: dict[str, Any]) -> Any:
+    for key in (
+        "judge_client",
+        "judge_llm",
+        "llm_judge",
+        "judge",
+        "llm_client",
+        "llm",
+        "client",
+        "evaluator",
+        "model_client",
+        "generator",
+    ):
+        if key in kwargs and kwargs[key] is not None:
+            return kwargs[key]
+    return None
+
+
+def _has_judge_client(client: Any) -> bool:
+    return _resolve_llm_client(client) is not None or _default_judge_client() is not None
+
+
+def _judge_score_for_answer(
+    question: str,
+    expected_answer: str,
+    answer: str,
+    client: Any,
+) -> tuple[Any, bool]:
+    """Return (score_or_None, skipped_flag)."""
+    if not _has_judge_client(client):
+        return None, True
+    result = judge_answer(
+        question,
+        expected_answer,
+        answer,
+        llm_client=client,
+    )
+    if result is None:
+        return None, True
+    return result.score, False
+
+
+def _metric_aliases_store(row: dict[str, Any], score: Any, skipped: bool) -> None:
+    for key in (
+        "judge_score",
+        "llm_judge_score",
+        "semantic_score",
+        "answer_quality",
+        "answer_quality_score",
+        "judge",
+        "llm_judge",
+        "quality_score",
+    ):
+        row[key] = score
+    row["judge_skipped"] = skipped
+    row["llm_judge_skipped"] = skipped
 
 
 if __name__ == "__main__":
