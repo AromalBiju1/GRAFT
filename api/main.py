@@ -22,6 +22,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.schemas import EvidenceItem, HealthResponse, QueryRequest, QueryResponse
+from api.uploads import router as uploads_router
 from config import settings
 from db.logger import init_db, log_query
 from embeddings import active_provider, collection_name, embed_text, embedding_dim
@@ -391,7 +392,7 @@ async def index_document_endpoint(request: Request) -> dict[str, Any]:
         "nodes_indexed": len(nodes),
         "nodes": [n.to_dict() for n in nodes[:20]],
     }
-
+app.include_router(uploads_router)
 
 def main() -> None:  # pragma: no cover
     import uvicorn
