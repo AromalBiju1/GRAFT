@@ -89,6 +89,21 @@ through the Vite development proxy to `http://127.0.0.1:8000`.
 catalog with notes in `data/sample_docs/sample_docs.md`. Use them to seed the
 index and test contradiction / numeric cases from `benchmark/datasets.py`.
 
+Index the whole sample corpus before running the benchmark (document IDs are
+the file stems, which is what the chunker hashes into chunk IDs):
+
+```bash
+python scripts/index_sample_corpus.py
+# regenerate the labelled chunk IDs afterwards if needed:
+python scripts/regenerate_benchmark_chunk_ids.py --verify
+```
+
+Then run:
+
+```bash
+python3 -m benchmark.runner --dataset data/sample_docs/benchmark.jsonl --output results.json
+```
+
 ## 7. Lint / Typecheck
 
 ```bash

@@ -42,6 +42,13 @@ class HealthResponse(BaseModel):
     #: vectors, so answers are not semantically meaningful.
     embedding_provider: str = "stub"
     embedding_dim: int = 0
+    #: Whether an LLM client could be built and is in use for answer synthesis.
+    llm_enabled: bool = False
+    llm_in_use: bool = False
+    llm_active: bool = False
+    llm_available: bool = False
+    llm_used: bool = False
+    llm_provider: str | None = None
 
 
 class ErrorResponse(BaseModel):

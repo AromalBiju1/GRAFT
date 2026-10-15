@@ -202,3 +202,19 @@ def test_tls_paraphrases_keep_mandatory_and_removed_in_their_respective_versions
     assert re.search(r"RFC 5246.*TLS_RSA_WITH_AES_128_CBC_SHA.*mandatory.*TLS 1\.2", answer)
     assert re.search(r"RFC 8446.*removes static RSA.*TLS 1\.3", answer)
     assert re.search(r"different protocol versions|protocol-version change", answer)
+
+
+def test_benchmark_dataset_chunk_ids_exist():
+    """Every labelled chunk ID must resolve to a persisted leaf in Chroma."""
+    import chromadb
+
+    from embeddings import collection_name
+
+    chroma_path = Path(__file__).resolve().parents[1] / ".graft" / "chroma"
+    client = chromadb.PersistentClient(path=str(chroma_path))
+    collection = client.get_collection(collection_name())
+    existing = set(collection.get()["ids"])
+    for line in BENCHMARK_LINES:
+        record = json.loads(line, object_pairs_hook=_unique_object)
+        for chunk_id in record["relevant_chunk_ids"]:
+            assert chunk_id in existing, chunk_id
