@@ -208,12 +208,18 @@ def test_benchmark_dataset_chunk_ids_exist():
     """Every labelled chunk ID must resolve to a persisted leaf in Chroma."""
     import chromadb
 
-    from embeddings import collection_name
+    from config import settings
 
     chroma_path = Path(__file__).resolve().parents[1] / ".graft" / "chroma"
     client = chromadb.PersistentClient(path=str(chroma_path))
-    collection = client.get_collection(collection_name())
-    existing = set(collection.get()["ids"])
+    existing: set[str] = set()
+    prefix = f"{settings.chroma_collection}_"
+    for listed in client.list_collections():
+        name = listed.name if hasattr(listed, "name") else str(listed)
+        if not name.startswith(prefix):
+            continue
+        existing.update(client.get_collection(name).get()["ids"])
+    assert existing, f"No indexed leaves found under {prefix!r} in {chroma_path}"
     for line in BENCHMARK_LINES:
         record = json.loads(line, object_pairs_hook=_unique_object)
         for chunk_id in record["relevant_chunk_ids"]:

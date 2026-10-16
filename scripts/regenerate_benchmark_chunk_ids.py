@@ -31,13 +31,23 @@ EVIDENCE = {
     "What is the average": [("1706.pdf", 18)],
     "By how many BLEU": [("1706.pdf", 18)],
     "Comparing RFC 793": [("rfc-editor.org_rfc_rfc793.txt.pdf", 0), ("rfc9293.pdf", 0)],
-    "How does the specified TLS": [("rfc-editor.org_rfc_rfc5246.txt.pdf", 9), ("rfc-editor.org_rfc_rfc8446.txt.pdf", 14)],
-    "Compare the proposed sequence-to-sequence": [("1705.pdf", 0), ("1706.pdf", 0), ("1706.pdf", 3)],
+    "How does the specified TLS": [
+        ("rfc-editor.org_rfc_rfc5246.txt.pdf", 9),
+        ("rfc-editor.org_rfc_rfc8446.txt.pdf", 14),
+    ],
+    "Compare the proposed sequence-to-sequence": [
+        ("1705.pdf", 0),
+        ("1706.pdf", 0),
+        ("1706.pdf", 3),
+    ],
     "The ConvS2S paper reports": [("1705.pdf", 25), ("1706.pdf", 18)],
     "For English-to-French": [("1705.pdf", 25), ("1706.pdf", 18)],
     "Do the two research papers": [("1705.pdf", 0), ("1706.pdf", 3)],
     "The two papers report": [("1705.pdf", 25), ("1706.pdf", 18)],
-    "Is TLS_RSA_WITH_AES_128_CBC_SHA": [("rfc-editor.org_rfc_rfc5246.txt.pdf", 9), ("rfc-editor.org_rfc_rfc8446.txt.pdf", 14)],
+    "Is TLS_RSA_WITH_AES_128_CBC_SHA": [
+        ("rfc-editor.org_rfc_rfc5246.txt.pdf", 9),
+        ("rfc-editor.org_rfc_rfc8446.txt.pdf", 14),
+    ],
     "Across both WMT": [("1705.pdf", 25), ("1706.pdf", 18)],
 }
 
@@ -47,7 +57,9 @@ def chunk_id(filename: str, index: int) -> str:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Regenerate benchmark chunk IDs from evidence coordinates.")
+    parser = argparse.ArgumentParser(
+        description="Regenerate benchmark chunk IDs from evidence coordinates."
+    )
     parser.add_argument("--dataset", type=Path, default=BENCHMARK_PATH)
     parser.add_argument("--verify", action="store_true", help="also check IDs exist in Chroma")
     args = parser.parse_args(argv)
@@ -66,7 +78,9 @@ def main(argv=None) -> int:
         rec["relevant_chunk_ids"] = new_ids
 
     args.dataset.write_text(
-        "".join(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n" for rec in records),
+        "".join(
+            json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n" for rec in records
+        ),
         encoding="utf-8",
     )
     print(f"Rewrote {len(records)} records ({changed} changed) in {args.dataset}")
@@ -80,7 +94,9 @@ def main(argv=None) -> int:
         client = chromadb.PersistentClient(path=str(REPO_ROOT / ".graft" / "chroma"))
         collection = client.get_collection(collection_name())
         existing = set(collection.get()["ids"])
-        missing = [cid for rec in records for cid in rec["relevant_chunk_ids"] if cid not in existing]
+        missing = [
+            cid for rec in records for cid in rec["relevant_chunk_ids"] if cid not in existing
+        ]
         if missing:
             print(f"{len(missing)} regenerated ID(s) are missing from Chroma:", file=sys.stderr)
             for cid in missing:

@@ -21,6 +21,8 @@ No test is removed or skipped; behaviour under test is unchanged.
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 
 import embeddings as _emb_module
@@ -36,10 +38,8 @@ def _warm_embedding_model_once():
     returns ``None`` immediately on later calls, so this stays cheap there
     too. Real-model tests skip cleanly via their existing markers.
     """
-    try:
+    with contextlib.suppress(Exception):
         _load_model()
-    except Exception:
-        pass
     yield
 
 
