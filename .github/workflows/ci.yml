@@ -38,6 +38,13 @@ jobs:
           raise SystemExit(0 if provider == 'sentence-transformers' else 1)
           "
 
+      - name: Index sample corpus
+        # test_benchmark_dataset_chunk_ids_exist asserts every benchmark chunk
+        # ID resolves in the default Chroma store. That store (.graft/chroma)
+        # is gitignored, so a fresh runner must build it first with the real
+        # embedder verified above.
+        run: python3 scripts/index_sample_corpus.py
+
       - name: Run test suite
         # -rs so any skip is listed rather than hidden; the embedder check above
         # guarantees the integration tests are not silently skipped.
