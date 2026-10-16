@@ -21,6 +21,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+import generation
 from api.routes.analytics import router as analytics_router
 from api.schemas import EvidenceItem, HealthResponse, QueryRequest, QueryResponse
 from api.uploads import router as uploads_router
