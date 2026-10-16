@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install 'pytest>=8.0' 'pytest-asyncio>=0.23' ruff mypy
+
+      - name: Report which embedder is in use
+        # If this says "stub", the real model did not load and the integration
+        # tests below will skip. CI must fail rather than quietly pass without
+        # ever exercising semantic retrieval.
+        run: |
+          python3 -c "
+          from embeddings import active_provider, embedding_dim
+          provider = active_provider()
+          print(f'embedder={provider} dim={embedding_dim()}')
+          raise SystemExit(0 if provider == 'sentence-transformers' else 1)
+          "
+
+      - name: Run test suite
+        # -rs so any skip is listed rather than hidden; the embedder check above
+        # guarantees the integration tests are not silently skipped.
+        run: python3 -m pytest tests/ -v --tb=short -rs
+
+      - name: Lint
+        # Runs even when tests fail, so a PR gets both signals at once.
+        if: always()
+        run: ruff check .
+
+      - name: Type check
+        # Advisory for now: mypy is configured in pyproject.toml but the
+        # codebase is not yet annotated to satisfy it. Flip to blocking once
+        # the count reaches zero.
+        if: always()
+        continue-on-error: true
+        run: mypy config.py embeddings.py version.py router retrieval modules generation baseline api indexing db tree_store

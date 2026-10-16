@@ -186,7 +186,15 @@ The wrapper copies the separate `document_id` argument into stored metadata.
 Although the adapter defaults a missing document ID to `""`, the wrapper
 rejects missing, empty, or whitespace-only document IDs with `ValueError`.
 Callers must supply a non-empty document ID for every node, including summaries.
-Writes are sequential: an error does not roll back previously persisted nodes.
+
+Nodes are written in a single batch via `ChromaVectorStore.insert_many`, so a
+whole tree costs one Chroma round trip rather than one per node. Every record is
+validated before anything is written: if any node is invalid, the call raises
+and the collection is left untouched. A node missing its embedding still raises
+`ValueError("Node <node_id> missing required embedding vector.")`.
+
+`ChromaVectorStore.insert` remains available for writing a single record and
+behaves as before.
 
 Use the wrapper's metadata filter to select a tree level:
 
@@ -398,6 +406,17 @@ Used for numerical calculations, comparisons, and reasoning over tables.
 
 Used for identifying conflicting claims between retrieved sources.
 
+`ContradictionDetectionModule(nli_client=None)` preserves the common module API
+and returns `{"conflicts": [...], "summary": ...}`. An injectable `NLIClient`
+exposes `predict(premise, hypothesis)` returning `{"label": str, "score": float}`.
+Passage pairs with keyword overlap >= 0.25 are evaluated in context order using
+their full `text` fields. NLI conflicts require a normalized `contradiction`
+label and a score strictly greater than 0.7; each adds `nli_label` and `nli_score`
+and uses `signal="nli_contradiction"`. Existing passage and overlap fields remain.
+Unavailable NLI predictions use the original negation-mismatch heuristic.
+The default model is loaded lazily, with initialization failures cached for the
+process lifetime and fallback reasons logged.
+
 ---
 
 ## 8. Specialist Modules → Generation
@@ -433,6 +452,30 @@ The generation component returns the final response to the API.
 The API should expose a stable response format to the frontend.
 
 ---
+
+### Optional LLM answer synthesis
+
+`generation.synthesize(request_id, query, context, module_results, llm_client=None)`
+preserves deterministic answer priority and evidence deduplication when no client
+is supplied. An injected callable `(prompt) -> str` or object with
+`.generate(prompt) -> str` enables grounded synthesis. The prompt includes the
+query, the first five retrieval hits' `text` fields (retrieval already sorts by
+score), and normalised module results as sorted, indented JSON. All original
+evidence remains in the response, including hits beyond the prompt's five-hit limit.
+
+Install `pip install -e ".[llm]"` for optional provider SDKs. Explicitly call
+`generation.create_llm_client()` and pass its result as `llm_client` to select
+`settings.llm_provider`. Gemini uses `settings.gemini_api_key` and
+`settings.gemini_model`; OpenAI uses `settings.openai_api_key` and
+`settings.openai_model`. SDK imports and client construction occur only inside
+the factory. Missing keys/dependencies and provider failures raise clear errors;
+they do not silently switch to deterministic answers. `local` requires an
+injected adapter returning text; this repository has no local model loader.
+The API and benchmark callers continue using the deterministic default.
+
+LLM answer wording changes token-overlap F1. Runs using LLM synthesis should
+record the provider/model and should not be compared directly with pre-LLM F1
+results. Existing benchmark results are unchanged.
 
 ## 10. API → Frontend
 
@@ -772,6 +815,15 @@ No behaviour, wire format or field changed — the move is import-path only, and
 each destination module already held the real implementation (the `graft.*`
 counterparts were forwarders). The PyPI distribution keeps the name `graft`.
 
+Contract update **v1.6** — batched indexing. Section 3 no longer promises
+sequential writes: `persist_tree_nodes` now writes a whole tree in one Chroma
+round trip through the new `ChromaVectorStore.insert_many`, and validates every
+record before writing any. `embeddings.embed_text` additionally exposes
+`embed_texts`, which `indexing.builder` uses to encode a document in one call
+when the embedder offers it. Both changes are performance only — no signature,
+response shape, metric definition or retrieval result moved. `insert()` still
+exists and is unchanged for single-record writes.
+
 ---
 
 ## 15. Overall Data Flow
@@ -857,3 +909,101 @@ EmbedClusterManager(
 - GMM uses diagonal covariance; if it fails to fit, it falls back to K-Means. If clustering fails entirely, all nodes go into a single cluster.
 - GMM can leave a component empty; empty clusters are dropped, so the number of returned clusters may be less than `K`.
 - A node with a missing/empty `node_id` or `text=None` raises `ValueError`.
+
+---
+
+## 16. Query Analytics (`api/routes/analytics.py`)
+
+Read-only endpoints over the query logs recorded by `db/logger.py`
+(`query_logs` table). Registered in `api/main.py` via `include_router`.
+Covered by `tests/test_analytics.py`.
+
+### `GET /analytics/queries?limit=50`
+
+Most recently processed queries, newest first.
+
+Query params:
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `limit` | integer | `50` | Max rows to return (`1`–`1000`) |
+
+Response:
+
+```json
+{
+  "queries": [
+    {
+      "query_text": "What is GRAFT?",
+      "latency_ms": 842.5,
+      "modules_fired": ["fact_lookup"],
+      "retrieval_depth": "0",
+      "timestamp": "2026-02-10T12:00:00+00:00"
+    }
+  ],
+  "count": 1,
+  "limit": 50
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `query_text` | string | The question submitted |
+| `latency_ms` | number | Processing time in milliseconds |
+| `modules_fired` | array[string] | Reasoning modules activated |
+| `retrieval_depth` | string | Document-tree depth used |
+| `timestamp` | string | ISO-8601 UTC time the query was processed |
+
+### `GET /analytics/summary`
+
+System usage overview.
+
+Response:
+
+```json
+{
+  "total_queries": 42,
+  "avg_latency_ms": 1350.0,
+  "module_usage_counts": {"fact_lookup": 42, "multi_hop": 18}
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `total_queries` | integer | Total number of questions processed |
+| `avg_latency_ms` | number | Average query processing time in ms (`0.0` when empty) |
+| `module_usage_counts` | object | `module name → activation count` |
+
+### `GET /analytics/slow?threshold_ms=1000`
+
+Queries whose execution time exceeded the threshold, newest first.
+
+Query params:
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `threshold_ms` | number | `1000` | Return queries with `latency_ms > threshold_ms` (`>= 0`) |
+| `limit` | integer | `100` | Max rows to return (`1`–`1000`) |
+
+Response:
+
+```json
+{
+  "queries": [
+    {
+      "query_text": "Compare the two documents in detail",
+      "latency_ms": 2500.0,
+      "modules_fired": ["fact_lookup", "multi_hop"],
+      "retrieval_depth": "2",
+      "timestamp": "2026-02-10T12:05:00+00:00"
+    }
+  ],
+  "count": 1,
+  "threshold_ms": 1000.0
+}
+```
+
+Entry shape is identical to `GET /analytics/queries`.
+
+Contract update **v1.7** — added Section 16 query analytics endpoints
+(`api/routes/analytics.py`, registered in `api/main.py`).

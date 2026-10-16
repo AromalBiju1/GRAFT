@@ -17,6 +17,13 @@ pip install -e ".[dev]"        # installs graft + dev deps from pyproject.toml
 pip install -r requirements.txt
 ```
 
+For optional NLI contradiction detection, install `pip install -e ".[nli]"`.
+This installs Transformers with its PyTorch backend and SentencePiece tokenizer.
+The `microsoft/deberta-v3-mnli` model is initialized on the first eligible passage
+pair, never on import. If dependencies or model loading are unavailable, the
+original heuristic remains available. Set `HF_HUB_OFFLINE=1` to prevent Hub
+network access; an uncached model then falls back to the heuristic.
+
 ## 2. Environment file
 
 ```bash
@@ -70,17 +77,32 @@ nodes = index_document("Your text...", document_id="doc_001", source="example.pd
 ```bash
 cd frontend
 npm install
-npm run dev    # Vite at http://localhost:5173, proxies /api -> 127.0.0.1:8000
+npm run dev    # Vite at http://localhost:5173, proxies /query -> 127.0.0.1:8000
 ```
 
-Ensure the API is running on 8000. The UI calls `/api/query` when proxied,
-otherwise falls back to `http://127.0.0.1:8000/query`.
+Ensure the API (`api.main:app`) is running on 8000. The UI calls `POST /query`
+through the Vite development proxy to `http://127.0.0.1:8000`.
 
 ## 6. Sample docs
 
 `data/sample_docs/` contains RFCs, Transformer papers, and the NIST OSCAL
 catalog with notes in `data/sample_docs/sample_docs.md`. Use them to seed the
 index and test contradiction / numeric cases from `benchmark/datasets.py`.
+
+Index the whole sample corpus before running the benchmark (document IDs are
+the file stems, which is what the chunker hashes into chunk IDs):
+
+```bash
+python scripts/index_sample_corpus.py
+# regenerate the labelled chunk IDs afterwards if needed:
+python scripts/regenerate_benchmark_chunk_ids.py --verify
+```
+
+Then run:
+
+```bash
+python3 -m benchmark.runner --dataset data/sample_docs/benchmark.jsonl --output results.json
+```
 
 ## 7. Lint / Typecheck
 

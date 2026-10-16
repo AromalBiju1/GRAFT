@@ -157,9 +157,9 @@ class IndexingTests(unittest.TestCase):
             parse_document(path)
         self.assertIsInstance(caught.exception.__cause__, FileNotFoundError)
         write_pdf(path, ['Readable.'])
-        with patch('indexing.parser.PdfReader', side_effect=PermissionError('denied')):
-            with self.assertRaises(DocumentParsingError) as caught:
-                parse_document(path)
+        with patch('indexing.parser.PdfReader', side_effect=PermissionError('denied')), \
+                self.assertRaises(DocumentParsingError) as caught:
+            parse_document(path)
         self.assertIsInstance(caught.exception.__cause__, PermissionError)
 
     def test_invalid_inputs(self) -> None:

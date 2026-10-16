@@ -277,14 +277,15 @@ class IndexingEndpointSmokeTests(unittest.TestCase):
         filename, content, mime = files_to_upload[0]
 
         # Use a temp Chroma persist path for endpoint to avoid polluting .graft/chroma
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Patch both possible import locations to use temp dir
-            with patch("api.routes.indexing.DEFAULT_PERSIST_PATH", Path(tmpdir)), patch(
-                "api.routes.indexing.ChromaVectorStore",
-                lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(
-                    persist_path=tmpdir, collection_name=collection_name
-                ),
-            ):
+        # Patch both possible import locations to use temp dir
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "api.routes.indexing.DEFAULT_PERSIST_PATH", Path(tmpdir)
+        ), patch(
+            "api.routes.indexing.ChromaVectorStore",
+            lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(
+                persist_path=tmpdir, collection_name=collection_name
+            ),
+        ):
                 # Also patch api.main settings if needed (for graft app path)
                 client = self._client_for_app(backend_app)
                 resp = client.post(
@@ -327,13 +328,14 @@ class IndexingEndpointSmokeTests(unittest.TestCase):
         if backend_app is None:
             self.skipTest("backend.app not importable")
         files_to_upload = self._pick_files_for_upload(2)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("api.routes.indexing.DEFAULT_PERSIST_PATH", Path(tmpdir)), patch(
-                "api.routes.indexing.ChromaVectorStore",
-                lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(
-                    persist_path=tmpdir, collection_name=collection_name
-                ),
-            ):
+        with tempfile.TemporaryDirectory() as tmpdir, patch(
+            "api.routes.indexing.DEFAULT_PERSIST_PATH", Path(tmpdir)
+        ), patch(
+            "api.routes.indexing.ChromaVectorStore",
+            lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(
+                persist_path=tmpdir, collection_name=collection_name
+            ),
+        ):
                 client = self._client_for_app(backend_app)
                 # Build files list for TestClient: list of tuples
                 files = [
@@ -396,17 +398,16 @@ class IndexingEndpointSmokeTests(unittest.TestCase):
             self.skipTest("api.main not importable")
         files_to_upload = self._pick_files_for_upload(1)
         filename, content, mime = files_to_upload[0]
+        # api.main resolves ChromaVectorStore through indexing.vector_store,
+        # so that is what has to be patched to redirect the store to tmpdir.
         with tempfile.TemporaryDirectory() as tmpdir, patch(
             "config.settings.chroma_path", Path(tmpdir)
+        ), patch(
+            "indexing.vector_store.ChromaVectorStore",
+            lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(
+                persist_path=tmpdir, collection_name=collection_name
+            ),
         ):
-            # Need to also patch the store class used inside api.main
-            # The module imports ChromaVectorStore via indexing.vector_store inside handler
-            with patch(
-                "indexing.vector_store.ChromaVectorStore",
-                lambda persist_path=tmpdir, collection_name="graft_tree_nodes": ChromaVectorStore(
-                    persist_path=tmpdir, collection_name=collection_name
-                ),
-            ):
                 client = self._client_for_app(graft_app)
                 resp = client.post(
                     "/index",

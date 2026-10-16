@@ -60,6 +60,56 @@ class ChromaVectorStore:
         ``document_id`` is copied into Chroma metadata so query results match
         the Retrieval -> Router contract in ``docs/interfaces.md``.
         """
+        record_id, document, vector, record_metadata = self._prepare_record(
+            chunk_id, document_id, text, embedding, metadata
+        )
+        self._collection.upsert(
+            ids=[record_id],
+            documents=[document],
+            embeddings=[vector],
+            metadatas=[record_metadata],
+        )
+
+    def insert_many(self, records: Sequence[Mapping[str, Any]]) -> None:
+        """Insert or replace many records in a single Chroma round trip.
+
+        Each record is a mapping with ``chunk_id``, ``document_id``, ``text``,
+        ``embedding`` and optional ``metadata`` — the same shape
+        :meth:`insert` takes.
+
+        Every record is validated *before* anything is written, so a bad record
+        anywhere in the batch aborts the whole call with nothing persisted.
+        That is stricter than :meth:`insert` in a loop, where earlier records
+        would already be committed when a later one failed.
+        """
+        prepared = [
+            self._prepare_record(
+                r["chunk_id"],
+                r["document_id"],
+                r["text"],
+                r["embedding"],
+                r.get("metadata"),
+            )
+            for r in records
+        ]
+        if not prepared:
+            return
+        self._collection.upsert(
+            ids=[p[0] for p in prepared],
+            documents=[p[1] for p in prepared],
+            embeddings=[p[2] for p in prepared],
+            metadatas=[p[3] for p in prepared],
+        )
+
+    def _prepare_record(
+        self,
+        chunk_id: str,
+        document_id: str,
+        text: str,
+        embedding: Sequence[float],
+        metadata: Mapping[str, Any] | None,
+    ) -> tuple[str, str, list[float], dict[str, Any]]:
+        """Validate one record and return ``(id, text, vector, metadata)``."""
         record_id = self._validate_identifier(chunk_id, "chunk_id")
         source_document_id = self._validate_identifier(document_id, "document_id")
         vector = self._validate_embedding(embedding)
@@ -71,13 +121,7 @@ class ChromaVectorStore:
         if supplied_document_id is not None and supplied_document_id != source_document_id:
             raise ValueError("metadata document_id must match document_id")
         record_metadata["document_id"] = source_document_id
-
-        self._collection.upsert(
-            ids=[record_id],
-            documents=[text],
-            embeddings=[vector],
-            metadatas=[record_metadata],
-        )
+        return record_id, text, vector, record_metadata
 
     def query(
         self,

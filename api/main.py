@@ -21,13 +21,21 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.routes.analytics import router as analytics_router
 from api.schemas import EvidenceItem, HealthResponse, QueryRequest, QueryResponse
+from api.uploads import router as uploads_router
 from config import settings
 from db.logger import init_db, log_query
 from embeddings import active_provider, collection_name, embed_text, embedding_dim
+import generation
 from generation import synthesize
+
+# Handle both patch styles (generation.create_llm_client and api.main.create_llm_client).
+create_llm_client = generation.create_llm_client
+_original_create_llm_client = generation.create_llm_client
 from indexing.config import MAX_DOCUMENT_ID_LENGTH
 from indexing.pipeline import build_tree, index_document, persist_tree_nodes
+from logging_config import configure_logging
 from modules.contradiction_detection import ContradictionDetectionModule
 from modules.fact_lookup import FactLookupModule
 from modules.multi_hop import MultiHopModule
@@ -38,6 +46,27 @@ from vector_store import ChromaVectorStore
 from version import __version__
 
 logger = logging.getLogger(__name__)
+
+
+def _build_llm_client() -> Any | None:
+    """Build an optional LLM client, falling back to None on any failure."""
+    if not getattr(settings, "llm_enabled", False):
+        return None
+    original = _original_create_llm_client
+    module_factory = globals().get("create_llm_client", original)
+    if module_factory is not original and callable(module_factory):
+        factory = module_factory
+    else:
+        factory = getattr(generation, "create_llm_client", original)
+    try:
+        return factory()
+    except Exception as exc:  # missing provider/key/sdk -> deterministic fallback
+        logger.warning(
+            "LLM client unavailable (%s: %s); using deterministic fallback.",
+            type(exc).__name__,
+            exc,
+        )
+        return None
 
 #: Upload-specific chunking. Smaller than the indexing default so freshly
 #: uploaded PDFs produce useful leaf granularity without a re-index.
@@ -80,6 +109,7 @@ def _warmup() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    configure_logging()
     if settings.warmup_on_startup:
         _warmup()
     yield
@@ -135,6 +165,8 @@ def _to_evidence_items(evidence: list[dict[str, Any]]) -> list[EvidenceItem]:
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
+    llm_client = _build_llm_client()
+    llm_in_use = llm_client is not None
     return HealthResponse(
         status="ok",
         version=__version__,
@@ -142,6 +174,12 @@ def health() -> HealthResponse:
         collection=collection_name(),
         embedding_provider=active_provider(),
         embedding_dim=embedding_dim(),
+        llm_enabled=llm_in_use,
+        llm_in_use=llm_in_use,
+        llm_active=llm_in_use,
+        llm_available=llm_in_use,
+        llm_used=llm_in_use,
+        llm_provider=(getattr(settings, "llm_provider", None) or None) if llm_in_use else None,
     )
 
 
@@ -181,7 +219,8 @@ def query(req: QueryRequest) -> QueryResponse:
 
     # 4. Generation
     try:
-        final = synthesize(request_id, req.query, retrieved, module_results)
+        llm_client = _build_llm_client()
+        final = synthesize(request_id, req.query, retrieved, module_results, llm_client=llm_client)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"generation failed: {exc}") from exc
 
@@ -389,7 +428,8 @@ async def index_document_endpoint(request: Request) -> dict[str, Any]:
         "nodes_indexed": len(nodes),
         "nodes": [n.to_dict() for n in nodes[:20]],
     }
-
+app.include_router(uploads_router)
+app.include_router(analytics_router)
 
 def main() -> None:  # pragma: no cover
     import uvicorn

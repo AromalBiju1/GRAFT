@@ -1,0 +1,221 @@
+GRAFT — must-read file checklist
+
+1) Start here
+- README.MD
+  Purpose: project overview, architecture, setup instructions, and the system concept.
+  Why read first: explains the entire project goal, components, and how they fit together.
+
+- docs/interfaces.md
+  Purpose: defines the contract between indexing, router, retrieval, modules, generation, and evaluation.
+  Why read first: this is the interface map that keeps the project components working together.
+
+- pyproject.toml
+  Purpose: project metadata, dependencies, scripts, and test/lint configuration.
+  Why read first: tells you the package structure, runtime requirements, and how the project is intended to run.
+
+2) Core runtime configuration and app entry points
+- config.py
+  Purpose: central settings for LLM provider, embedding provider, Chroma database path, router thresholds, and API settings.
+  Why read: most runtime behavior is controlled here.
+
+- embeddings.py
+  Purpose: unified embedding implementation with real model support and deterministic stub fallback.
+  Why read: ensures indexing and querying use matching vector dimensions.
+
+- version.py
+  Purpose: package version.
+  Why read: quick reference for app versioning.
+
+- api/main.py
+  Purpose: main FastAPI app and orchestration layer.
+  Why read: the app-level flow lives here, including /health, /query, and /index.
+
+- api/schemas.py
+  Purpose: request/response models for queries and health checks.
+  Why read: defines the external API contract.
+
+3) Indexing and tree-building pipeline
+- indexing/pipeline.py
+  Purpose: end-to-end indexing orchestration from text to embedded tree nodes.
+  Why read: the canonical document-to-tree pipeline entry point.
+
+- indexing/builder.py
+  Purpose: builds nodes and recursive summary layers from chunk text.
+  Why read: this is where RAPTOR-style tree construction happens.
+
+- indexing/tree_node.py
+  Purpose: data model for every document node in the tree.
+  Why read: defines the actual node structure and relationships.
+
+- indexing/summarizer.py
+  Purpose: recursive summarization engine that clusters child nodes and creates parent summary nodes.
+  Why read: this is the core of tree growth and abstraction.
+
+- indexing/chunker.py
+  Purpose: chunk text into token-based segments with overlap.
+  Why read: governs how raw text gets broken down before indexing.
+
+- indexing/ingest.py
+  Purpose: parse raw files into readable text.
+  Why read: necessary for PDFs/DOCX ingestion and preprocessing.
+
+- indexing/store.py
+  Purpose: persists TreeNode objects into the vector store.
+  Why read: storage interface for index writes.
+
+- indexing/vector_store/chroma_store.py
+  Purpose: ChromaDB wrapper storing precomputed node embeddings.
+  Why read: underlying vector store implementation used by retrieval and indexing.
+
+- vector_store/__init__.py
+  Purpose: compatibility re-export for vector store access.
+  Why read: simple but important import surface used by the project.
+
+4) Router, retrieval, and gating logic
+- router/__init__.py
+  Purpose: query complexity classifier and module activation logic.
+  Why read: this is the intelligent gate deciding how deep to retrieve and which modules to trigger.
+
+- retrieval/__init__.py
+  Purpose: retrieves relevant tree nodes based on vector similarity and depth limits.
+  Why read: defines how the query finds context in the tree.
+
+5) Specialist modules
+- modules/base.py
+  Purpose: shared ModuleResult contract and BaseModule interface.
+  Why read: every module must conform to this contract.
+
+- modules/fact_lookup/__init__.py
+  Purpose: direct fact-answering logic over retrieved context.
+  Why read: baseline module for simple factual lookup.
+
+- modules/multi_hop/__init__.py
+  Purpose: combines evidence across multiple passages for comparative or chained reasoning.
+  Why read: handles questions requiring cross-passage synthesis.
+
+- modules/numeric_reasoning/__init__.py
+  Purpose: extracts numbers and supports simple arithmetic operations like sum, average, and difference.
+  Why read: necessary for table/quantity-heavy queries.
+
+- modules/contradiction_detection/__init__.py
+  Purpose: detects conflicts or contradictory claims across retrieved passages.
+  Why read: special reasoning module for source disagreement detection.
+
+6) Generation and answer synthesis
+- generation/__init__.py
+  Purpose: combines context and module outputs into the final answer.
+  Why read: defines how the answer string is produced and how evidence is prepared.
+
+7) Comparison and benchmarking systems
+- baseline/__init__.py
+  Purpose: flat RAG baseline for comparison against the gated system.
+  Why read: shows the non-gated control system used for benchmarking.
+
+- benchmark/runner.py
+  Purpose: benchmark harness, dataset loader, metric definitions, and result generation.
+  Why read: explains how the project measures performance and fairness between systems.
+
+- benchmark/datasets.py
+  Purpose: dataset utilities used by benchmark evaluation.
+  Why read: helps understand how evaluation data is prepared and scored.
+
+- db/logger.py
+  Purpose: SQLite logging of queries, modules fired, latency, and benchmark labels.
+  Why read: supports evaluation and operational tracking.
+
+8) Frontend UI
+- frontend/src/App.jsx
+  Purpose: top-level React page wiring everything together.
+  Why read: reveals how the frontend displays answers and evidence.
+
+- frontend/src/query.js
+  Purpose: API client used by the frontend to submit user queries.
+  Why read: minimal but important for understanding frontend-backend integration.
+
+- frontend/src/QueryForm.jsx
+  Purpose: user input form.
+  Why read: how the user enters a query.
+
+- frontend/src/AnswerPanel.jsx
+  Purpose: renders the final answer.
+  Why read: main answer display component.
+
+- frontend/src/EvidenceList.jsx
+  Purpose: displays supporting passages and metadata.
+  Why read: essential for inspecting the evidence behind an answer.
+
+- frontend/src/RoutingBadges.jsx
+  Purpose: displays routing/classification detail.
+  Why read: shows the gated decision made by the router.
+
+9) Tests
+- tests/test_router.py
+  Purpose: tests query complexity classification and module activation.
+  Why read: key validation for the gating logic.
+
+- tests/test_retrieval.py
+  Purpose: tests the retrieval behavior and depth semantics.
+  Why read: confirms the retrieval contract.
+
+- tests/test_indexing.py
+  Purpose: tests indexing pipeline and tree structure creation.
+  Why read: validates the core document-to-tree pipeline.
+
+- tests/test_indexing_pipeline.py
+  Purpose: pipeline-level indexing tests.
+  Why read: higher-level overview of indexing behavior.
+
+- tests/test_chroma_store.py
+  Purpose: tests vector-store behavior and metadata storage.
+  Why read: ensures the database layer works correctly.
+
+- tests/test_generation.py
+  Purpose: tests synthesis and answer generation.
+  Why read: ensures the final answer output behavior.
+
+- tests/test_query_endpoint.py
+  Purpose: endpoint-level tests for /query.
+  Why read: validates full request flow.
+
+- tests/test_integration.py
+  Purpose: end-to-end integration checks.
+  Why read: best single place to understand the intended full-system behavior.
+
+- tests/test_modules/test_fact_lookup.py
+- tests/test_modules/test_multi_hop.py
+- tests/test_modules/test_numeric_reasoning.py
+- tests/test_modules/test_contradiction_detection.py
+  Purpose: validate each specialist module.
+  Why read: shows exact expected behavior for the reasoning modules.
+
+10) Best file-reading order for new contributors
+1. README.MD
+2. docs/interfaces.md
+3. config.py
+4. api/main.py
+5. router/__init__.py
+6. retrieval/__init__.py
+7. indexing/pipeline.py
+8. indexing/builder.py
+9. indexing/summarizer.py
+10. modules/base.py
+11. modules/*
+12. generation/__init__.py
+13. baseline/__init__.py
+14. benchmark/runner.py
+15. frontend/src/App.jsx
+16. tests/test_integration.py
+
+11) Project summary in one line
+GRAFT is a gated retrieval-augmented generation system that turns documents into a hierarchical RAPTOR-style tree, routes each query by complexity, retrieves only the needed depth, activates only necessary specialist reasoning modules, and compares itself against a flat baseline.
+
+12) If you are changing code, prioritize these files first
+- router/__init__.py
+- retrieval/__init__.py
+- indexing/builder.py
+- indexing/summarizer.py
+- generation/__init__.py
+- api/main.py
+- modules/*
+
+These files define the behavior that most directly impacts correctness, performance, and the project’s main pipeline.

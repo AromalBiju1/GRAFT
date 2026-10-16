@@ -164,6 +164,13 @@ def collection_name(base: str | None = None) -> str:
     return f"{base}_{slug}_{embedding_dim()}"
 
 
+# ``embed_text`` stays a plain ``str -> vector`` callable so every existing
+# ``embedding_fn`` caller keeps working, but it carries the batch entry point as
+# an attribute. The indexing builder checks for it and encodes a whole document
+# in one call instead of one forward pass per chunk.
+embed_text.embed_texts = embed_texts  # type: ignore[attr-defined]
+
+
 __all__ = [
     "STUB_EMBEDDING_DIM",
     "active_provider",

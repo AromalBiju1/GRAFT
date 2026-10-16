@@ -20,7 +20,9 @@ class Settings(BaseSettings):
 
     # LLM
     llm_provider: str = Field(default="gemini", description="gemini | openai | local")
+    llm_enabled: bool = Field(default=False, description="enable LLM answer synthesis in the API")
     gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
 
@@ -50,6 +52,17 @@ class Settings(BaseSettings):
     default_retrieval_depth: int = 1
     router_threshold_simple: float = 0.35
     router_threshold_complex: float = 0.65
+
+    # LLM judge (benchmark semantic answer-quality metric)
+    judge_provider: str = Field(default="gemini", description="gemini | openai | local")
+    judge_llm_provider: str = Field(default="gemini", description="alias for judge_provider")
+    llm_judge_provider: str = Field(default="gemini", description="alias for judge_provider")
+    evaluation_provider: str = Field(default="gemini", description="alias for judge_provider")
+    judge_model: str = "gemini-2.5-flash"
+    judge_llm_model: str = "gemini-2.5-flash"
+    llm_judge_model: str = "gemini-2.5-flash"
+    evaluation_model: str = "gemini-2.5-flash"
+    judge_model_name: str = "gemini-2.5-flash"
 
 
 settings = Settings()
