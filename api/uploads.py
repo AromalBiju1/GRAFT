@@ -32,7 +32,8 @@ def _sniff_ok(head: bytes, ext: str) -> bool:
 
 @router.post("/files", status_code=201)
 async def upload(bg: BackgroundTasks, file: Annotated[UploadFile, File(...)]):
-    ext = Path(file.filename or "").suffix.lower()
+    filename = file.filename or ""
+    ext = Path(filename).suffix.lower()
     if ext not in ALLOWED_EXT or file.content_type not in ALLOWED_MIME:
         raise HTTPException(415, "Only PDF, DOCX or TXT files are supported")
 
@@ -57,7 +58,7 @@ async def upload(bg: BackgroundTasks, file: Annotated[UploadFile, File(...)]):
         dest.unlink(missing_ok=True)
         raise HTTPException(415, "File is empty or its content doesn't match its type")
 
-    FILES[fid] = {"id": fid, "name": Path(file.filename).name, "size": size,
+    FILES[fid] = {"id": fid, "name": Path(filename).name, "size": size,
                   "path": str(dest), "status": "uploaded", "error": None}
     bg.add_task(_process, fid)
     return FILES[fid]

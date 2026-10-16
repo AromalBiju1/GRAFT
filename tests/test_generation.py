@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -136,7 +137,10 @@ class TestValidation:
 class TestLLMSynthesis:
     def test_callable_receives_grounded_prompt_and_preserves_evidence(self) -> None:
         context = [passage(f"c{i}", f"retrieved passage {i}") for i in range(7)]
-        modules = [_fact_module(), {"module": "numeric_reasoning", "result": {"sum": 42}}]
+        modules: list[ModuleResult[Any] | dict[str, Any]] = [
+            _fact_module(),
+            {"module": "numeric_reasoning", "result": {"sum": 42}},
+        ]
         client = Mock(return_value="Grounded answer")
         out = synthesize(REQUEST_ID, "What is the total?", context, modules, llm_client=client)
         prompt = client.call_args.args[0]

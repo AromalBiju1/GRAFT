@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from generation import synthesize
-from modules.base import ModuleResult
+from modules.base import BaseModule, ModuleResult
 from modules.contradiction_detection import ContradictionDetectionModule
 from modules.fact_lookup import FactLookupModule
 from modules.multi_hop import MultiHopModule
@@ -33,7 +33,7 @@ def run_baseline(
     """
     retrieved = retrieve(query_embedding, n_results=n_results, filters=filters)
 
-    modules = [
+    modules: list[BaseModule[Any]] = [
         FactLookupModule(),
         MultiHopModule(),
         NumericReasoningModule(),

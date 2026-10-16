@@ -54,6 +54,10 @@ def seeded(client: TestClient) -> TestClient:
 
 
 class TestRecentQueries:
+    def test_log_query_requires_system(self, isolated_db: Path) -> None:
+        with pytest.raises(ValueError, match="system must be a non-empty string"):
+            db_logger.log_query(query_text="A query without a system")
+
     def test_returns_seeded_queries(self, seeded: TestClient) -> None:
         resp = seeded.get("/analytics/queries")
         assert resp.status_code == 200, resp.text

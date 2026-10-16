@@ -7,10 +7,12 @@ from typing import Any
 from modules.base import BaseModule, ModuleResult
 
 
-class FactLookupModule(BaseModule):
+class FactLookupModule(BaseModule[str]):
     name = "fact_lookup"
 
-    def run(self, request_id: str, query: str, context: list[dict[str, Any]]) -> ModuleResult:
+    def run(
+        self, request_id: str, query: str, context: list[dict[str, Any]]
+    ) -> ModuleResult[str]:
         if not context:
             return ModuleResult(
                 request_id=request_id,

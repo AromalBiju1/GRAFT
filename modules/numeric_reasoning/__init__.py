@@ -23,10 +23,12 @@ def _extract_numbers(text: str) -> list[float]:
     return vals
 
 
-class NumericReasoningModule(BaseModule):
+class NumericReasoningModule(BaseModule[dict[str, Any]]):
     name = "numeric_reasoning"
 
-    def run(self, request_id: str, query: str, context: list[dict[str, Any]]) -> ModuleResult:
+    def run(
+        self, request_id: str, query: str, context: list[dict[str, Any]]
+    ) -> ModuleResult[dict[str, Any]]:
         all_text = "\n".join(str(c.get("text", "")) for c in context)
         numbers = _extract_numbers(all_text)
         ql = query.lower()
@@ -57,7 +59,7 @@ class NumericReasoningModule(BaseModule):
         return ModuleResult(
             request_id=request_id,
             module=self.name,
-            result=result_payload,  # type: ignore[arg-type]
+            result=result_payload,
             evidence=context[:3],
             confidence=confidence,
             metadata={"operation": operation},

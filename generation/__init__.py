@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import importlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from modules.base import ModuleResult
@@ -90,12 +90,11 @@ def create_llm_client() -> Callable[[str], str]:
 
     return generate
 
-
 def synthesize(
     request_id: str,
     query: str,
     context: list[dict[str, Any]],
-    module_results: list[ModuleResult | dict[str, Any]],
+    module_results: Sequence[ModuleResult | dict[str, Any]],
     llm_client: Any = None,
 ) -> dict[str, Any]:
     """Build a final response dict compatible with docs/interfaces.md section 9.

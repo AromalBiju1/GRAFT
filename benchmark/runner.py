@@ -64,7 +64,7 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 from benchmark import measure_latency, modules_fired_count, retrieval_precision_at_k
 from generation import synthesize
@@ -698,7 +698,9 @@ def run_setup(
             registry,
             setup,
         )
-        score, skipped = _judge_score_for_answer(rec.query, rec.expected_answer, out["answer"], resolved_judge_client)
+        score, skipped = _judge_score_for_answer(
+            rec.query, rec.expected_answer, out["answer"], resolved_judge_client
+        )
         rows.append(
             {
                 "setup": setup.name,
@@ -803,7 +805,9 @@ def run_ablation(
         **kwargs,
     }
     per_setup = {
-        setup.name: run_setup(records, setup, embedder=embedder, retriever=retriever, **_judge_kwargs)
+        setup.name: run_setup(
+            records, setup, embedder=embedder, retriever=retriever, **_judge_kwargs
+        )
         for setup in setups
     }
     aggregate_by_setup = aggregate_setups(per_setup)
@@ -1006,10 +1010,14 @@ def main(
             return EXIT_DATASET_ERROR
 
     if args.ablation:
-        results = run_ablation(records, embedder=embedder, retriever=retriever, seed=args.seed, **kwargs)
+        results = run_ablation(
+            records, embedder=embedder, retriever=retriever, seed=args.seed, **kwargs
+        )
         summary = format_ablation_summary(results)
     else:
-        results = run_benchmark(records, embedder=embedder, retriever=retriever, seed=args.seed, **kwargs)
+        results = run_benchmark(
+            records, embedder=embedder, retriever=retriever, seed=args.seed, **kwargs
+        )
         summary = format_summary(results)
     results["dataset"] = str(args.dataset)
 
@@ -1026,7 +1034,10 @@ def main(
 class JudgeResult(int):
     """An integer judge score (0-3) carrying an optional one-line reason."""
 
-    def __new__(cls, score: int, reason: str = ""):
+    score: int
+    reason: str
+
+    def __new__(cls, score: int, reason: str = "") -> JudgeResult:
         obj = super().__new__(cls, int(score))
         obj.score = int(score)
         obj.reason = reason or ""
@@ -1038,25 +1049,32 @@ class JudgeResult(int):
     def get(self, key: str, default: Any = None) -> Any:
         return {"score": self.score, "reason": self.reason}.get(key, default)
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str | int) -> Any:
         if key in ("score", 0):
             return self.score
         if key in ("reason", 1):
             return self.reason
         raise KeyError(key)
 
-    def __iter__(self):  # type: ignore[override]
+    def __iter__(self) -> Iterator[Any]:
         yield self.score
         yield self.reason
 
     def __repr__(self) -> str:
         return f"JudgeResult({self.score}, {self.reason!r})"
 
+def _wrap_generate(generate: Callable[[str], Any]) -> Callable[[str], str]:
+    """Adapt an object's ``.generate`` method to a prompt -> str callable."""
+
+    def _gen(prompt: str) -> str:
+        return cast(str, generate(prompt))
+
+    return _gen
 
 def _resolve_llm_client(candidate: Any) -> Callable[[str], str] | None:
     """Normalise a callable / object / kwargs bundle into a prompt->str callable."""
     if candidate is None:
-        return None
+        raise RuntimeError("judge function not configured")
     if isinstance(candidate, dict):
         for key in (
             "llm_client",
@@ -1083,22 +1101,15 @@ def _resolve_llm_client(candidate: Any) -> Callable[[str], str] | None:
                 return resolved
         return None
     if callable(candidate):
-        # Object exposing .generate (not itself callable prompt->str? but often is)
+        # Prefer .generate when the callable object also exposes it.
         generate = getattr(candidate, "generate", None)
-        if generate is not None and callable(generate) and not isinstance(candidate, str):
-            # Prefer generate when the object also happens to be callable for
-            # other reasons (e.g. a class instance). Strings are never clients.
-            def _gen(prompt: str) -> str:
-                return generate(prompt)  # type: ignore[call-arg]
-            return _gen
-        return candidate  # type: ignore[return-value]
+        if callable(generate):
+            return _wrap_generate(generate)
+        return cast(Callable[[str], str], candidate)
     generate = getattr(candidate, "generate", None)
     if callable(generate):
-        def _gen(prompt: str) -> str:
-            return generate(prompt)  # type: ignore[call-arg]
-        return _gen
+        return _wrap_generate(generate)
     return None
-
 
 def _parse_judge_response(text: Any) -> tuple[int, str]:
     """Extract an integer 0-3 and a one-line reason from a judge response."""
@@ -1164,7 +1175,11 @@ def _default_judge_client() -> Callable[[str], str] | None:
         from config import settings
     except Exception:
         return None
-    provider = str(getattr(settings, "judge_provider", getattr(settings, "llm_provider", "gemini"))).strip().lower()
+    provider = (
+        str(getattr(settings, "judge_provider", getattr(settings, "llm_provider", "gemini")))
+        .strip()
+        .lower()
+    )
     # alias support
     for attr in ("judge_llm_provider", "llm_judge_provider", "evaluation_provider"):
         val = getattr(settings, attr, None)
@@ -1178,11 +1193,9 @@ def _default_judge_client() -> Callable[[str], str] | None:
     if provider == "gemini":
         key = getattr(settings, "gemini_api_key", None)
         model_attr = "gemini_model"
-        env_key = "gemini_api_key"
     else:
         key = getattr(settings, "openai_api_key", None)
         model_attr = "openai_model"
-        env_key = "openai_api_key"
     # judge-specific model override
     model = None
     for attr in (

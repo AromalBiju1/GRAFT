@@ -6,7 +6,7 @@ import threading
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import chromadb
 
@@ -66,7 +66,7 @@ class ChromaVectorStore:
         self._collection.upsert(
             ids=[record_id],
             documents=[document],
-            embeddings=[vector],
+            embeddings=cast(list[Sequence[float]], [vector]),
             metadatas=[record_metadata],
         )
 
@@ -97,7 +97,7 @@ class ChromaVectorStore:
         self._collection.upsert(
             ids=[p[0] for p in prepared],
             documents=[p[1] for p in prepared],
-            embeddings=[p[2] for p in prepared],
+            embeddings=cast(list[Sequence[float]], [p[2] for p in prepared]),
             metadatas=[p[3] for p in prepared],
         )
 
@@ -172,7 +172,10 @@ class ChromaVectorStore:
             return
         self._closed = True
         del self._collection
-        self._client.close()
+        close_client = getattr(self._client, "close", None)
+        if close_client is None:
+            raise RuntimeError("Chroma client does not support close")
+        close_client()
 
     @classmethod
     def shared(

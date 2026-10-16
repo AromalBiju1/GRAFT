@@ -107,7 +107,7 @@ def _keyword_overlap(a: str, b: str) -> float:
     return inter / union if union else 0.0
 
 
-class ContradictionDetectionModule(BaseModule):
+class ContradictionDetectionModule(BaseModule[dict[str, Any]]):
     """Compare overlapping passages with NLI or the original heuristic fallback."""
 
     name = "contradiction_detection"
@@ -115,7 +115,9 @@ class ContradictionDetectionModule(BaseModule):
     def __init__(self, nli_client: NLIClient | None = None) -> None:
         self.nli_client = nli_client if nli_client is not None else _default_nli_client
 
-    def run(self, request_id: str, query: str, context: list[dict[str, Any]]) -> ModuleResult:
+    def run(
+        self, request_id: str, query: str, context: list[dict[str, Any]]
+    ) -> ModuleResult[dict[str, Any]]:
         if len(context) < 2:
             return ModuleResult(
                 request_id=request_id,

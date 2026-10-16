@@ -10,7 +10,7 @@ from __future__ import annotations
 class JudgePrompt(str):
     """A ``str`` subclass whose ``format`` accepts common field aliases."""
 
-    def format(self, *args, **kwargs):  # type: ignore[override]
+    def format(self, *args: object, **kwargs: object) -> str:  # type: ignore[override]
         normalized: dict[str, object] = dict(kwargs)
 
         def pick(*names: str, default: object = "") -> object:

@@ -21,18 +21,14 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+import generation
 from api.routes.analytics import router as analytics_router
 from api.schemas import EvidenceItem, HealthResponse, QueryRequest, QueryResponse
 from api.uploads import router as uploads_router
 from config import settings
 from db.logger import init_db, log_query
 from embeddings import active_provider, collection_name, embed_text, embedding_dim
-import generation
 from generation import synthesize
-
-# Handle both patch styles (generation.create_llm_client and api.main.create_llm_client).
-create_llm_client = generation.create_llm_client
-_original_create_llm_client = generation.create_llm_client
 from indexing.config import MAX_DOCUMENT_ID_LENGTH
 from indexing.pipeline import build_tree, index_document, persist_tree_nodes
 from logging_config import configure_logging
@@ -46,6 +42,9 @@ from vector_store import ChromaVectorStore
 from version import __version__
 
 logger = logging.getLogger(__name__)
+# Handle both patch styles (generation.create_llm_client and api.main.create_llm_client).
+create_llm_client = generation.create_llm_client
+_original_create_llm_client = generation.create_llm_client
 
 
 def _build_llm_client() -> Any | None:
@@ -414,15 +413,17 @@ async def index_document_endpoint(request: Request) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=422, detail="JSON payload must be an object")
 
-    text = payload.get("text")
+    json_text = payload.get("text")
     document_id = payload.get("document_id")
     source = payload.get("source")
-    if not isinstance(text, str) or not text.strip():
+    if not isinstance(json_text, str) or not json_text.strip():
         raise HTTPException(status_code=422, detail="text must be a non-empty string")
     if not isinstance(document_id, str) or not document_id.strip():
         raise HTTPException(status_code=422, detail="document_id must be a non-empty string")
+    if source is not None and not isinstance(source, str):
+        raise HTTPException(status_code=422, detail="source must be a string or null")
 
-    nodes = index_document(text, document_id=document_id, source=source)
+    nodes = index_document(json_text, document_id=document_id, source=source)
     return {
         "document_id": document_id,
         "nodes_indexed": len(nodes),

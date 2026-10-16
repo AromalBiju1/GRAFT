@@ -9,12 +9,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from indexing.ingest import parse_document
+from indexing.pipeline import index_document
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-
-from indexing.ingest import parse_document
-from indexing.pipeline import index_document
 
 SAMPLE_DIR = REPO_ROOT / "data" / "sample_docs"
 ALLOWED = {".pdf", ".docx"}

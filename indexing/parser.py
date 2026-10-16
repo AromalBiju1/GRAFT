@@ -40,7 +40,7 @@ def parse_document(filepath: str | PathLike[str]) -> str:
                 if (text := page.extract_text()) and text.strip()
             ]
         else:
-            parts = [p.text.strip() for p in Document(path).paragraphs if p.text.strip()]
+            parts = [p.text.strip() for p in Document(str(path)).paragraphs if p.text.strip()]
     except Exception as exc:
         raise DocumentParsingError(f"Could not parse document: {path}: {exc}") from exc
 

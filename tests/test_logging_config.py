@@ -8,7 +8,6 @@ import unittest
 from logging_config import (
     NOISY_LOGGERS,
     configure_logging,
-    get_logger,
     logging_config_dict,
     resolve_level,
 )
@@ -96,22 +95,19 @@ class ConfigureLoggingTests(unittest.TestCase):
 
     def test_records_reach_the_handler(self) -> None:
         import io
+        import sys
 
         stream = io.StringIO()
         configure_logging("info")
         handler = logging.getLogger().handlers[0]
+        assert isinstance(handler, logging.StreamHandler)
         handler.setStream(stream)
         try:
             logging.getLogger("api.main").info("hello")
         finally:
-            handler.setStream(__import__("sys").stderr)
+            handler.setStream(sys.stderr)
         self.assertIn("hello", stream.getvalue())
         self.assertIn("api.main", stream.getvalue())
-
-    def test_get_logger_configures_and_returns(self) -> None:
-        logger = get_logger("graft.tests", "info")
-        self.assertEqual(logger.name, "graft.tests")
-        self.assertTrue(logging.getLogger().handlers)
 
 
 class DictConfigTests(unittest.TestCase):

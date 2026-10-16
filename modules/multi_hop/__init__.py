@@ -7,10 +7,12 @@ from typing import Any
 from modules.base import BaseModule, ModuleResult
 
 
-class MultiHopModule(BaseModule):
+class MultiHopModule(BaseModule[str]):
     name = "multi_hop"
 
-    def run(self, request_id: str, query: str, context: list[dict[str, Any]]) -> ModuleResult:
+    def run(
+        self, request_id: str, query: str, context: list[dict[str, Any]]
+    ) -> ModuleResult[str]:
         if len(context) < 2:
             return ModuleResult(
                 request_id=request_id,

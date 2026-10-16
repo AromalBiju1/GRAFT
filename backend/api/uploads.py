@@ -37,9 +37,10 @@ def safe_name(name: str) -> str:
 
 async def save_upload(f: UploadFile) -> Path:
     """Validate type + size, stream to disk in chunks (never fully in memory)."""
+    filename = f.filename or "file"
     if f.content_type not in ALLOWED:
-        raise ValueError(f"{safe_name(f.filename)}: unsupported type. Use PDF, DOCX or TXT.")
-    dest = UPLOAD_DIR / f"{uuid.uuid4().hex}_{safe_name(f.filename)}"
+        raise ValueError(f"{safe_name(filename)}: unsupported type. Use PDF, DOCX or TXT.")
+    dest = UPLOAD_DIR / f"{uuid.uuid4().hex}_{safe_name(filename)}"
     dest.parent.mkdir(parents=True, exist_ok=True)
     size = 0
     with dest.open("wb") as out:
@@ -48,7 +49,7 @@ async def save_upload(f: UploadFile) -> Path:
             if size > MAX_BYTES:
                 out.close()
                 dest.unlink(missing_ok=True)
-                raise ValueError(f"{safe_name(f.filename)}: larger than {MAX_BYTES // 2**20} MB.")
+                raise ValueError(f"{safe_name(filename)}: larger than {MAX_BYTES // 2**20} MB.")
             out.write(chunk)
     return dest
 

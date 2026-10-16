@@ -3,6 +3,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import tiktoken
@@ -64,7 +65,7 @@ class IndexingTests(unittest.TestCase):
         doc = Document()
         for paragraph in ['First paragraph.', '  ', 'Second paragraph.']:
             doc.add_paragraph(paragraph)
-        doc.save(path)
+        doc.save(str(path))
         self.assertEqual(parse_document(path), 'First paragraph.\n\nSecond paragraph.')
         self.assert_schema(ingest_document(path, document_id='test_doc'))
 
@@ -139,7 +140,7 @@ class IndexingTests(unittest.TestCase):
             if suffix == '.pdf':
                 write_pdf(path, [''])
             else:
-                Document().save(path)
+                Document().save(str(path))
             with self.subTest(suffix=suffix, kind='no text'), self.assertRaises(
                 DocumentParsingError
             ):
@@ -167,7 +168,13 @@ class IndexingTests(unittest.TestCase):
             parse_document(self.root / 'unsupported.txt')
         with self.assertRaises(DocumentParsingError):
             chunk_text(' \n ')
-        for options in [{'chunk_size': 0}, {'overlap': -1}, {'overlap': 400}, {'document_id': ''}]:
+        invalid_options: list[dict[str, Any]] = [
+            {'chunk_size': 0},
+            {'overlap': -1},
+            {'overlap': 400},
+            {'document_id': ''},
+        ]
+        for options in invalid_options:
             with self.subTest(options=options), self.assertRaises(ValueError):
                 chunk_text('Some text.', **options)
 

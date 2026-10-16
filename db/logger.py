@@ -22,7 +22,7 @@ DB_PATH = Path(__file__).parent / "graft_logs.db"
 VALID_ACCURACY_FLAGS = {"correct", "incorrect", "unscored"}
 
 
-def _validate_accuracy_flag(accuracy_flag: str) -> None:
+def _validate_accuracy_flag(accuracy_flag: str | None) -> None:
     if accuracy_flag is not None and accuracy_flag not in VALID_ACCURACY_FLAGS:
         raise ValueError(
             f"accuracy_flag must be one of {sorted(VALID_ACCURACY_FLAGS)} or None"
@@ -69,11 +69,11 @@ def init_db():
 
 def log_query(
     query_text: str,
-    system: str,
-    latency_ms: float = None,
-    modules_fired: list[str] = None,
-    retrieval_depth: str = None,
-    accuracy_flag: str = None,
+    system: str | None = None,
+    latency_ms: float | None = None,
+    modules_fired: list[str] | None = None,
+    retrieval_depth: str | None = None,
+    accuracy_flag: str | None = None,
 ) -> int:
     """
     Insert one query log row.
@@ -90,6 +90,8 @@ def log_query(
     Returns:
         the id of the inserted row
     """
+    if system is None or not system.strip():
+        raise ValueError("system must be a non-empty string")
     _validate_accuracy_flag(accuracy_flag)
     with get_connection() as conn:
         cursor = conn.execute(
@@ -109,7 +111,10 @@ def log_query(
                 accuracy_flag,
             ),
         )
-        return cursor.lastrowid
+        row_id = cursor.lastrowid
+        if row_id is None:
+            raise RuntimeError("insert did not return a row id")
+        return int(row_id)
 
 
 def update_accuracy(log_id: int, accuracy_flag: str) -> None:
@@ -125,7 +130,7 @@ def update_accuracy(log_id: int, accuracy_flag: str) -> None:
             raise ValueError(f"No query_logs row found for id={log_id}")
 
 
-def get_logs(system: str = None, limit: int = 100) -> list[dict]:
+def get_logs(system: str | None = None, limit: int = 100) -> list[dict]:
     """
     Fetch logged rows, most recent first.
 

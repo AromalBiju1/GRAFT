@@ -31,7 +31,7 @@ class ParseDocumentTests(unittest.TestCase):
             document.add_paragraph("First readable paragraph.")
             document.add_paragraph("   ")
             document.add_paragraph("Second readable paragraph.")
-            document.save(path)
+            document.save(str(path))
 
             text = parse_document(path)
 
@@ -64,7 +64,7 @@ class ParseDocumentTests(unittest.TestCase):
     def test_docx_without_extractable_text_raises_value_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "empty.docx"
-            Document().save(path)
+            Document().save(str(path))
 
             with self.assertRaisesRegex(ValueError, "No extractable text"):
                 parse_document(path)

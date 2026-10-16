@@ -7,14 +7,16 @@ Subclasses implement :meth:`run` and return a :class:`ModuleResult`.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Generic, TypeVar
+
+ResultT = TypeVar("ResultT")
 
 
 @dataclass(slots=True)
-class ModuleResult:
+class ModuleResult(Generic[ResultT]):
     request_id: str
     module: str
-    result: str | dict[str, Any]
+    result: ResultT
     evidence: list[dict[str, Any]] = field(default_factory=list)
     confidence: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -30,15 +32,19 @@ class ModuleResult:
         }
 
 
-class BaseModule:
+class BaseModule(Generic[ResultT]):
     """Abstract specialist module."""
 
     name: str = "base"
 
-    def run(self, request_id: str, query: str, context: list[dict[str, Any]]) -> ModuleResult:
+    def run(
+        self, request_id: str, query: str, context: list[dict[str, Any]]
+    ) -> ModuleResult[ResultT]:
         raise NotImplementedError
 
-    def __call__(self, request_id: str, query: str, context: list[dict[str, Any]]) -> ModuleResult:
+    def __call__(
+        self, request_id: str, query: str, context: list[dict[str, Any]]
+    ) -> ModuleResult[ResultT]:
         if not request_id or not str(request_id).strip():
             raise ValueError("request_id must be a non-empty string")
         if not isinstance(query, str) or not query.strip():

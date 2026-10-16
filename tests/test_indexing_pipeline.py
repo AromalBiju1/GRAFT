@@ -71,7 +71,7 @@ def _get_sample_files(limit: int = 3) -> list[Path]:
                 doc = Document()
                 doc.add_paragraph("Fallback sample document for smoke test.")
                 doc.add_paragraph("Second paragraph with enough words " * 30)
-                doc.save(fallback)
+                doc.save(str(fallback))
                 # copy to temp persistent location handled by caller
             except Exception:
                 pass
