@@ -21,7 +21,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-import generation
+from api.routes.analytics import router as analytics_router
 from api.schemas import EvidenceItem, HealthResponse, QueryRequest, QueryResponse
 from api.uploads import router as uploads_router
 from config import settings
@@ -428,6 +428,7 @@ async def index_document_endpoint(request: Request) -> dict[str, Any]:
         "nodes": [n.to_dict() for n in nodes[:20]],
     }
 app.include_router(uploads_router)
+app.include_router(analytics_router)
 
 def main() -> None:  # pragma: no cover
     import uvicorn

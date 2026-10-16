@@ -909,3 +909,101 @@ EmbedClusterManager(
 - GMM uses diagonal covariance; if it fails to fit, it falls back to K-Means. If clustering fails entirely, all nodes go into a single cluster.
 - GMM can leave a component empty; empty clusters are dropped, so the number of returned clusters may be less than `K`.
 - A node with a missing/empty `node_id` or `text=None` raises `ValueError`.
+
+---
+
+## 16. Query Analytics (`api/routes/analytics.py`)
+
+Read-only endpoints over the query logs recorded by `db/logger.py`
+(`query_logs` table). Registered in `api/main.py` via `include_router`.
+Covered by `tests/test_analytics.py`.
+
+### `GET /analytics/queries?limit=50`
+
+Most recently processed queries, newest first.
+
+Query params:
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `limit` | integer | `50` | Max rows to return (`1`–`1000`) |
+
+Response:
+
+```json
+{
+  "queries": [
+    {
+      "query_text": "What is GRAFT?",
+      "latency_ms": 842.5,
+      "modules_fired": ["fact_lookup"],
+      "retrieval_depth": "0",
+      "timestamp": "2026-02-10T12:00:00+00:00"
+    }
+  ],
+  "count": 1,
+  "limit": 50
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `query_text` | string | The question submitted |
+| `latency_ms` | number | Processing time in milliseconds |
+| `modules_fired` | array[string] | Reasoning modules activated |
+| `retrieval_depth` | string | Document-tree depth used |
+| `timestamp` | string | ISO-8601 UTC time the query was processed |
+
+### `GET /analytics/summary`
+
+System usage overview.
+
+Response:
+
+```json
+{
+  "total_queries": 42,
+  "avg_latency_ms": 1350.0,
+  "module_usage_counts": {"fact_lookup": 42, "multi_hop": 18}
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `total_queries` | integer | Total number of questions processed |
+| `avg_latency_ms` | number | Average query processing time in ms (`0.0` when empty) |
+| `module_usage_counts` | object | `module name → activation count` |
+
+### `GET /analytics/slow?threshold_ms=1000`
+
+Queries whose execution time exceeded the threshold, newest first.
+
+Query params:
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `threshold_ms` | number | `1000` | Return queries with `latency_ms > threshold_ms` (`>= 0`) |
+| `limit` | integer | `100` | Max rows to return (`1`–`1000`) |
+
+Response:
+
+```json
+{
+  "queries": [
+    {
+      "query_text": "Compare the two documents in detail",
+      "latency_ms": 2500.0,
+      "modules_fired": ["fact_lookup", "multi_hop"],
+      "retrieval_depth": "2",
+      "timestamp": "2026-02-10T12:05:00+00:00"
+    }
+  ],
+  "count": 1,
+  "threshold_ms": 1000.0
+}
+```
+
+Entry shape is identical to `GET /analytics/queries`.
+
+Contract update **v1.7** — added Section 16 query analytics endpoints
+(`api/routes/analytics.py`, registered in `api/main.py`).
