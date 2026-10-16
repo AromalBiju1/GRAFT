@@ -10,17 +10,16 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from indexing.ingest import parse_document
-from indexing.pipeline import index_document
-
 SAMPLE_DIR = REPO_ROOT / "data" / "sample_docs"
 ALLOWED = {".pdf", ".docx"}
 
 
 def main() -> int:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from indexing.ingest import parse_document
+    from indexing.pipeline import index_document
+
     files = sorted(
         p for p in SAMPLE_DIR.iterdir() if p.suffix.lower() in ALLOWED and p.name != "sample.docx"
     )

@@ -21,18 +21,14 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+import generation
 from api.routes.analytics import router as analytics_router
 from api.schemas import EvidenceItem, HealthResponse, QueryRequest, QueryResponse
 from api.uploads import router as uploads_router
 from config import settings
 from db.logger import init_db, log_query
 from embeddings import active_provider, collection_name, embed_text, embedding_dim
-import generation
 from generation import synthesize
-
-# Handle both patch styles (generation.create_llm_client and api.main.create_llm_client).
-create_llm_client = generation.create_llm_client
-_original_create_llm_client = generation.create_llm_client
 from indexing.config import MAX_DOCUMENT_ID_LENGTH
 from indexing.pipeline import build_tree, index_document, persist_tree_nodes
 from logging_config import configure_logging
@@ -44,6 +40,10 @@ from retrieval import retrieve
 from router import route
 from vector_store import ChromaVectorStore
 from version import __version__
+
+# Handle both patch styles (generation.create_llm_client and api.main.create_llm_client).
+create_llm_client = generation.create_llm_client
+_original_create_llm_client = generation.create_llm_client
 
 logger = logging.getLogger(__name__)
 

@@ -33,9 +33,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     monkeypatch.setattr(settings, "embedding_provider", "stub")
     monkeypatch.setattr(settings, "chroma_path", tmp_path / "chroma")
     monkeypatch.setattr(settings, "warmup_on_startup", False)
-    from embeddings import reset_model_cache
-
-    reset_model_cache()
+    # Session model cache is preserved (see tests/conftest.py, issue #69).
     yield TestClient(api_main.app)
     # Release the cached Chroma handle; without this a new client leaks one
     # open collection per temporary directory for the whole session.

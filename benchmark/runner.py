@@ -698,7 +698,12 @@ def run_setup(
             registry,
             setup,
         )
-        score, skipped = _judge_score_for_answer(rec.query, rec.expected_answer, out["answer"], resolved_judge_client)
+        score, skipped = _judge_score_for_answer(
+            rec.query,
+            rec.expected_answer,
+            out["answer"],
+            resolved_judge_client,
+        )
         rows.append(
             {
                 "setup": setup.name,
@@ -803,7 +808,13 @@ def run_ablation(
         **kwargs,
     }
     per_setup = {
-        setup.name: run_setup(records, setup, embedder=embedder, retriever=retriever, **_judge_kwargs)
+        setup.name: run_setup(
+            records,
+            setup,
+            embedder=embedder,
+            retriever=retriever,
+            **_judge_kwargs,
+        )
         for setup in setups
     }
     aggregate_by_setup = aggregate_setups(per_setup)
@@ -1006,10 +1017,22 @@ def main(
             return EXIT_DATASET_ERROR
 
     if args.ablation:
-        results = run_ablation(records, embedder=embedder, retriever=retriever, seed=args.seed, **kwargs)
+        results = run_ablation(
+            records,
+            embedder=embedder,
+            retriever=retriever,
+            seed=args.seed,
+            **kwargs,
+        )
         summary = format_ablation_summary(results)
     else:
-        results = run_benchmark(records, embedder=embedder, retriever=retriever, seed=args.seed, **kwargs)
+        results = run_benchmark(
+            records,
+            embedder=embedder,
+            retriever=retriever,
+            seed=args.seed,
+            **kwargs,
+        )
         summary = format_summary(results)
     results["dataset"] = str(args.dataset)
 
@@ -1164,7 +1187,9 @@ def _default_judge_client() -> Callable[[str], str] | None:
         from config import settings
     except Exception:
         return None
-    provider = str(getattr(settings, "judge_provider", getattr(settings, "llm_provider", "gemini"))).strip().lower()
+    provider = str(
+        getattr(settings, "judge_provider", getattr(settings, "llm_provider", "gemini"))
+    ).strip().lower()
     # alias support
     for attr in ("judge_llm_provider", "llm_judge_provider", "evaluation_provider"):
         val = getattr(settings, attr, None)
@@ -1178,11 +1203,9 @@ def _default_judge_client() -> Callable[[str], str] | None:
     if provider == "gemini":
         key = getattr(settings, "gemini_api_key", None)
         model_attr = "gemini_model"
-        env_key = "gemini_api_key"
     else:
         key = getattr(settings, "openai_api_key", None)
         model_attr = "openai_model"
-        env_key = "openai_api_key"
     # judge-specific model override
     model = None
     for attr in (

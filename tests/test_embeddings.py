@@ -21,7 +21,6 @@ from embeddings import (
     embed_text,
     embed_texts,
     embedding_dim,
-    reset_model_cache,
 )
 
 #: all-MiniLM-L6-v2 output width, per docs/interfaces.md §15.
@@ -35,12 +34,17 @@ def _model_available() -> bool:
     *same* skip decision. Probing per-test (as a bare ``skipif`` expression
     would) let a transient load failure silently drop three tests from a run
     that otherwise passed, which hides lost coverage.
+
+    The probe reuses the session-cached model (see ``tests/conftest.py``) and
+    only resets between attempts when the first load actually failed, so
+    collection does not pay for — or evict — an already-loaded model.
     """
-    for _attempt in (1, 2):
-        reset_model_cache()
-        if _load_model() is not None:
-            return True
-    return False
+    if _load_model() is not None:
+        return True
+    import embeddings as _emb
+
+    _emb.reset_model_cache()
+    return _load_model() is not None
 
 
 REAL_MODEL_AVAILABLE = _model_available()
@@ -50,11 +54,10 @@ requires_real_model = pytest.mark.skipif(
 )
 
 
-@pytest.fixture
-def stub_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Force the stub path so the suite does not depend on the model cache."""
-    monkeypatch.setattr(settings, "embedding_provider", "stub")
-    reset_model_cache()
+# NOTE: ``stub_provider`` now lives in ``tests/conftest.py`` as a shared
+# fixture. It forces the stub embedder without resetting the model cache, so
+# stub tests no longer evict the session model and force a reload in the next
+# real-model test (issue #69).
 
 
 class TestProviderSelection:
@@ -64,9 +67,12 @@ class TestProviderSelection:
     def test_stub_provider_yields_stub_dimension(self, stub_provider: None) -> None:
         assert embedding_dim() == STUB_EMBEDDING_DIM
 
-    def test_unknown_provider_falls_back_to_stub(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_unknown_provider_falls_back_to_stub(
+        self, monkeypatch: pytest.MonkeyPatch, stub_provider: None
+    ) -> None:
+        # ``stub_provider`` already forces the stub path (and preserves the
+        # session model cache); an unknown provider must behave the same way.
         monkeypatch.setattr(settings, "embedding_provider", "not-a-real-provider")
-        reset_model_cache()
         assert active_provider() == "stub"
         assert embedding_dim() == STUB_EMBEDDING_DIM
 
@@ -149,15 +155,14 @@ class TestCollectionName:
 
         Both embedders must resolve to *different* collections, otherwise
         writing real vectors into a stub-built collection fails.
+
+        Provider switching alone is sufficient — no cache reset is needed
+        (the session model from ``tests/conftest.py`` is reused, avoiding a
+        full reload per run; issue #69).
         """
         monkeypatch.setattr(settings, "embedding_provider", "stub")
-        reset_model_cache()
         stub_name = collection_name()
         monkeypatch.setattr(settings, "embedding_provider", "sentence-transformers")
-        reset_model_cache()
-        try:
-            real_name = collection_name()
-        finally:
-            reset_model_cache()
+        real_name = collection_name()
         if active_provider() == "sentence-transformers":
             assert real_name != stub_name

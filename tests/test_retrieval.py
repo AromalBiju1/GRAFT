@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from config import settings
-from embeddings import embed_text, reset_model_cache
+from embeddings import embed_text
 from indexing.pipeline import index_document
 from retrieval import MAX_RETRIEVAL_DEPTH, retrieve
 
@@ -28,13 +28,15 @@ DOC_TEXT = (
 
 @pytest.fixture
 def collection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    """A temp Chroma collection seeded with a real multi-level tree."""
+    """A temp Chroma collection seeded with a real multi-level tree.
+
+    Uses the stub embedder (fast/offline). The session model cache is left
+    untouched — see ``tests/conftest.py`` (issue #69).
+    """
     monkeypatch.setattr(settings, "embedding_provider", "stub")
     monkeypatch.setattr(settings, "chroma_path", tmp_path / "chroma")
-    reset_model_cache()
     index_document(DOC_TEXT, document_id="doc_r", source="doc.md")
     yield settings.chroma_path
-    reset_model_cache()
 
 
 def _levels_present() -> set[int]:
