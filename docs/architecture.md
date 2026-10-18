@@ -120,6 +120,31 @@ All modules follow the shared output contract described in
 Generation merges the activated modules' output into one answer and attaches
 de-duplicated, ordered evidence so every claim can be traced to a source passage.
 
+## Rendering the use-case diagram
+
+The use-case diagram lives in `docs/use-cases.puml` and is written in
+[PlantUML](https://plantuml.com). Render it with the `smetana` layout engine, which is
+built into PlantUML and does not need Graphviz installed.
+
+**Command line** (requires Java and `plantuml.jar`):
+
+```bash
+java -jar plantuml.jar -Playout=smetana docs/use-cases.puml
+```
+
+This writes `docs/use-cases.png`. Add `-tsvg` to get an SVG instead:
+
+```bash
+java -jar plantuml.jar -Playout=smetana -tsvg docs/use-cases.puml
+```
+
+**VS Code:** if you use the PlantUML extension, add `-Playout=smetana` to its command
+arguments in your settings, or put `!pragma layout smetana` on the line after
+`@startuml` in the `.puml` file.
+
+Keep `docs/use-cases.puml` in the repository and re-render it whenever the use cases
+change.
+
 ## Related documents
 
 - [README](../README.MD): project overview and setup

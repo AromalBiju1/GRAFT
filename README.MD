@@ -50,6 +50,9 @@ Document Corpus → Indexing Pipeline → Tree Store → Router
 | Retrieval | Walks the tree at the depth the router selects |
 | Specialist Modules | Fact lookup · Multi-hop reasoning · Numeric/table reasoning · Contradiction detection |
 | Generation | Synthesizes the final answer from retrieved context + module output |
+| For a full walkthrough of the pipeline, including how the router chooses retrieval
+| depth and reasoning modules, see [docs/architecture.md](docs/architecture.md). The
+| reasoning behind key design choices is recorded in [docs/adr/](docs/adr/).
 
 ## Repository Structure
 
