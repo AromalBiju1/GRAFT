@@ -1003,6 +1003,14 @@ Response:
 }
 ```
 
+## Related documentation
+
+- [Architecture overview](architecture.md): how the pipeline stages fit together and
+  how the router picks retrieval depth and modules.
+- [Architecture decision records](adr/): why the system is designed the way it is.
+- [Scope and MVP definition](scope.md): what is in and out of scope.
+
+
 Entry shape is identical to `GET /analytics/queries`.
 
 Contract update **v1.7** — added Section 16 query analytics endpoints
