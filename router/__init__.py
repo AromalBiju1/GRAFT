@@ -47,17 +47,55 @@ _WEIGHT_PER_EXTRA_OP = 0.12
 CONFIDENCE_FLOOR = 0.7
 CONFIDENCE_CEILING = 1.0
 
+#: How many tokens before a hint match a negation word may sit and still veto
+#: the intent. 4 covers "not a real", "no actual" style connective padding.
+NEGATION_WINDOW_WORDS = 4
+
+#: Words that invert or cancel the claim being made about the hint.
+_WORD_NEGATION_RE = re.compile(
+    r"\b(?:not|no|never|without|except|isn'?t|aren'?t|wasn'?t|don'?t|doesn'?t"
+    r"|didn'?t|can'?t|cannot|won'?t|neither|nor)\b",
+    re.I,
+)
+
+#: Any word-like token (keeps contractions whole for the window scan).
+_WORD_TOKEN_RE = re.compile(r"[\w']+")
+
+
+
+def _is_negated(match: re.Match[str], query: str) -> bool:
+    """True when a negation word sits within the window before *match*.
+
+    Looks at the last :data:`NEGATION_WINDOW_WORDS` word tokens preceding the
+    match position. A negation outside that window has no veto: "I asked for
+    brevity earlier … now compare A and B" is a genuine comparison request.
+    """
+    prefix = query[: match.start()]
+    window = _WORD_TOKEN_RE.findall(prefix)[-(NEGATION_WINDOW_WORDS + 1):]
+    return bool(_WORD_NEGATION_RE.search(" ".join(window)))
+
+
+def _hint_fires(pattern: re.Pattern[str], query: str) -> bool:
+    """Whether *pattern* matches *query* with a non-negated hit."""
+    match = pattern.search(query)
+    return match is not None and not _is_negated(match, query)
+
 # Intent hints. These use word *stems* followed by ``\w*`` rather than
 # ``\b<word>\b``: a bare ``\bconflict\b`` does not match "conflicts", which
 # silently prevented contradiction detection from ever activating on the most
 # natural phrasing. Stems keep singular, plural and inflected forms matched.
+#
+# Matching is negation-aware: a hint hit whose match is preceded within
+# :data:`NEGATION_WINDOW_WORDS` tokens of a negation word does not count as
+# intent (see :func:`_is_negated`), so "this is not a comparison" stops
+# inflating the tier the same way a real comparison does.
 _NUMERIC_HINTS = re.compile(
     r"(\d+[%$€₹]?|\$?\d[\d,]*\.?\d*|\btables?\b|\bcolumns?\b|\bsums?\b|\baverages?\b|\btotals?\b|compare.*\d)",
     re.I,
 )
 _MULTI_HOP_HINTS = re.compile(
     r"(\bcompar\w+|\bcontrast\w+|\bdifferences?\b|\brelationships?\b"
-    r"|\bacross\b|between.*and|\bboth\b|\ball three\b|\bmultiple\b)",
+    r"|\bacross\b|\bbetween\s+\S+(?:\s+\S+){0,3}\s+and\b|\bboth\b|\ball three\b|\bmultiple\b)",
     re.I,
 )
 _CONTRADICTION_HINTS = re.compile(
@@ -153,9 +191,9 @@ def complexity_score(query: str) -> float:
     # "compare A and B" stays cheaper than "compare A and B and explain why".
     extra_ops = min(max(0, operations - 1), COMPOUND_SATURATION_OPS - 1)
 
-    numeric_signal = 1.0 if _NUMERIC_HINTS.search(q) else 0.0
-    multi_hop_signal = 1.0 if _MULTI_HOP_HINTS.search(q) else 0.0
-    contradiction_signal = 1.0 if _CONTRADICTION_HINTS.search(q) else 0.0
+    numeric_signal = 1.0 if _hint_fires(_NUMERIC_HINTS, q) else 0.0
+    multi_hop_signal = 1.0 if _hint_fires(_MULTI_HOP_HINTS, q) else 0.0
+    contradiction_signal = 1.0 if _hint_fires(_CONTRADICTION_HINTS, q) else 0.0
 
     score = (
         _WEIGHT_LENGTH * length_signal
@@ -239,11 +277,11 @@ def route(query: str, *, retrieval_depth_override: int | None = None) -> Routing
     activated: list[str] = ["fact_lookup"]
 
     if complexity != "simple":
-        if _CONTRADICTION_HINTS.search(query):
+        if _hint_fires(_CONTRADICTION_HINTS, query):
             activated.append("contradiction_detection")
-        if _NUMERIC_HINTS.search(query):
+        if _hint_fires(_NUMERIC_HINTS, query):
             activated.append("numeric_reasoning")
-        if _MULTI_HOP_HINTS.search(query) or _COMPOUND_OPERATION_COUNT(query) > 1:
+        if _hint_fires(_MULTI_HOP_HINTS, query) or _COMPOUND_OPERATION_COUNT(query) > 1:
             activated.append("multi_hop")
         # A complex query always needs at least one reasoning pass, even when
         # no hint keyword fired (e.g. a long, clause-heavy question).
