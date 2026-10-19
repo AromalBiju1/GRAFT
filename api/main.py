@@ -125,10 +125,43 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+def _cors_origins() -> list[str]:
+    """Parse ``CORS_ORIGINS`` into a browser-usable origin list.
+
+    Accepts a comma-separated list and trims whitespace, so every one of
+    ``ORIGIN_A,ORIGIN_B``, ``ORIGIN_A, ORIGIN_B`` and a single origin works.
+    An empty value (or any item ``*``) becomes ``["*"]`` to preserve the
+    dev/demo allow-all behaviour without any extra env var needed -- a
+    wildcard mixed into an otherwise-explicit list is treated as allow-all,
+    never as an extra allowed origin.
+    """
+    raw = (settings.cors_origins or "").strip()
+    if not raw or raw == "*":
+        return ["*"]
+    items = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    if "*" in items:
+        return ["*"]
+    return items
+
+
+def _cors_config() -> tuple[list[str], bool]:
+    """Return ``(allowed_origins, allow_credentials)`` for the CORS middleware.
+
+    Per the CORS spec an ``Access-Control-Allow-Origin: *`` response cannot be
+    combined with credentialed requests (browsers reject the pair), so wildcard
+    mode forces credentials off. Explicit origin lists keep credentials allowed.
+    """
+    origins = _cors_origins()
+    return origins, origins != ["*"]
+
+
+_cors_allowed_origins, _cors_allow_credentials = _cors_config()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_allowed_origins,
+    allow_credentials=_cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
