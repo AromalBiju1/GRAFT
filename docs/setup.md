@@ -37,6 +37,13 @@ Key vars (see `config.py`):
 - `GRAFT_CHROMA_PATH` — default `.graft/chroma`
 - `GRAFT_DB_PATH` — default `db/graft_logs.db`
 - `GRAFT_API_HOST / GRAFT_API_PORT` — default `127.0.0.1:8000`
+- `CORS_ORIGINS` — comma-separated allowed browser origins. Empty or `*`
+  allows every origin (dev/demo behaviour). Per the CORS spec a wildcard
+  origin cannot serve credentialed requests, so wildcard mode automatically
+  forces credentials off; an explicit list such as
+  `CORS_ORIGINS=http://localhost:5173,https://graft.example.org` keeps
+  credentialed cross-origin requests working. Set a real list before
+  containerised or publicly-reachable deployments (see Docker setup, #67).
 
 ## 3. Verify backend stubs
 

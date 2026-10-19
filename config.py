@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_reload: bool = True
+    #: Comma-separated allowed CORS origins, e.g. "http://localhost:5173,https://graft.example.org".
+    #: Empty or "*" permits every origin (demo/dev behaviour).
+    #: Per the CORS spec, a "*" origin cannot be combined with credentialed
+    #: responses, so credentials are only negotiated for an explicit origin list.
+    cors_origins: str = ""
     #: Load the embedder and open the Chroma collection at startup instead of
     #: on the first query. Loading MiniLM costs ~0.4 s warm and up to ~17 s on
     #: a cold model cache; left lazy that lands on a random request. Tests turn
