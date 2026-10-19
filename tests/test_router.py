@@ -221,6 +221,77 @@ class TestModuleActivation:
         assert "numeric_reasoning" not in modules
 
 
+class TestNegationScoping:
+    """Regression tests for the negation window (issue #82).
+
+    Hint matching used to be positive-keyword-only, so "not a comparison"
+    inflated the tier and fired multi_hop exactly like a real comparison. The
+    negation window (NEGATION_WINDOW_WORDS tokens before the match) vetoes the
+    intent; these tests pin the audit examples and the fix's boundaries.
+    """
+
+    def test_negated_comparison_stays_simple(self) -> None:
+        """The audit example: an explicitly denied comparison must not inflate."""
+        query = "This is not a comparison, just tell me the capital of France in one sentence."
+        decision = route(query)
+        assert decision.complexity == "simple"
+        assert decision.activated_modules == ["fact_lookup"]
+
+    def test_negated_conflict_does_not_activate_contradiction_detection(self) -> None:
+        """A high-signal negated-conflict query keeps the contradiction module off.
+
+        The query still lands 'complex' via its numeric/enumerate content, so
+        the assertion exercises the negation veto in `route` itself, not the
+        tier gate.
+        """
+        query = (
+            "List every total mentioned and confirm there is no conflict "
+            "between the two reports."
+        )
+        decision = route(query)
+        assert decision.complexity == "complex"
+        assert "contradiction_detection" not in decision.activated_modules
+
+    def test_negated_conflict_preflight_query_is_not_flagged(self) -> None:
+        query = "There is no conflict in this document."
+        assert "contradiction_detection" not in route(query).activated_modules
+
+    def test_between_bounded_gap_still_fires_multi_hop(self) -> None:
+        """The tightened `between ... and` pattern keeps real distance queries."""
+        decision = route("Compare between TCP and UDP.")
+        assert "multi_hop" in decision.activated_modules
+
+    def test_between_with_a_wide_gap_no_longer_fires_multi_hop(self) -> None:
+        """`between` more than 3 words away from `and` no longer matches."""
+        query = "What lies between the beginning of the document written and the end?"
+        assert route(query).complexity in {"simple", "moderate"}
+        assert complexity_score(query) < 0.5
+
+    def test_negation_outside_the_window_does_not_veto(self) -> None:
+        """A negation farther than the window back leaves the intent intact."""
+        query = "Do not summarize. I want a real comparison of the two documents."
+        tokens_before = query[: query.index("comparison")].split()
+        assert "not" in tokens_before  # sanity: negation present, but earlier
+        assert route(query).complexity in {"moderate", "complex"}
+
+    def test_negated_numeric_hint_does_not_add_signal(self) -> None:
+        """'no total' wording alone must not add the numeric signal."""
+        without = complexity_score("Tell me about the strategy documents.")
+        with_negated = complexity_score("Tell me about the strategy documents, with no total.")
+        # The nominal sentence boundary keeps the negation inside the window,
+        # so the added text only shifts the score via the length signal; assert
+        # it does NOT jump the numeric signal (>= WEIGHT_NUMERIC sanity band).
+        assert with_negated - without < 0.30
+
+    def test_genuine_hints_unaffected_by_the_window(self) -> None:
+        """Positive phrasing keeps firing: the window only vetoes negations."""
+        assert route("Are there any conflicts in the document?").complexity == "moderate"
+        assert "contradiction_detection" in route(
+            "Are there any conflicts in the document?"
+        ).activated_modules
+        assert "multi_hop" in route("Compare the two documents.").activated_modules
+
+
 class TestRoutingDecision:
     def test_to_dict_returns_exactly_the_contract_keys(self) -> None:
         """Serialize routing decisions with exactly the public contract keys."""
