@@ -3,7 +3,6 @@
 Provides:
   GET  /health          liveness + version
   POST /query           gated GRAFT pipeline
-  POST /baseline/query  flat baseline for benchmarking
   POST /index           ingest raw text into the tree + vector store
 """
 
