@@ -101,3 +101,4 @@ Update `frontend/vite.config.js` and `frontend/vite.local.config.js` to proxy `/
    - Run full test suite: `pytest tests/`.
 2. **Frontend Build & Component Validation**:
    - Verify frontend compiles cleanly: `npm run build` in `frontend/`.
+

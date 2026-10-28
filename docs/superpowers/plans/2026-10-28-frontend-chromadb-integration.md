@@ -397,3 +397,4 @@ Expected: Build succeeds without errors
 ```bash
 git commit --allow-empty -m "chore: complete frontend & chromadb integration verification"
 ```
+
