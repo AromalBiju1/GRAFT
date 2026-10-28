@@ -22,6 +22,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 import generation
+from api.query_runner import MODULE_REGISTRY, execute_query
 from api.routes.analytics import router as analytics_router
 from api.schemas import EvidenceItem, HealthResponse, QueryRequest, QueryResponse
 from api.uploads import router as uploads_router
@@ -74,12 +75,7 @@ UPLOAD_CHUNK_SIZE_TOKENS = 200
 UPLOAD_CHUNK_OVERLAP_TOKENS = 20
 UPLOAD_CLUSTER_SIZE = 4
 
-MODULE_REGISTRY: dict[str, Any] = {
-    "fact_lookup": FactLookupModule(),
-    "multi_hop": MultiHopModule(),
-    "numeric_reasoning": NumericReasoningModule(),
-    "contradiction_detection": ContradictionDetectionModule(),
-}
+# MODULE_REGISTRY is imported from api.query_runner for backwards compatibility
 
 def _warmup() -> None:
     """Load the embedder and open the Chroma collection before serving traffic.
@@ -218,69 +214,20 @@ def health() -> HealthResponse:
 
 @app.post("/query", response_model=QueryResponse)
 def query(req: QueryRequest) -> QueryResponse:
-    if not req.query or not req.query.strip():
-        raise HTTPException(status_code=422, detail="query must not be empty")
-
-    request_id = req.request_id or f"req_{uuid.uuid4().hex[:10]}"
-    t0 = time.perf_counter()
-
-    # 1. Route
-    decision = route(req.query, retrieval_depth_override=req.retrieval_depth)
-
-    # 2. Retrieve
-    q_emb = _embed_query_stub(req.query)
-    try:
-        retrieved = retrieve(
-            q_emb,
-            n_results=5,
-            retrieval_depth=decision.retrieval_depth,
-            filters=req.filters,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"retrieval failed: {exc}") from exc
-
-    # 3. Specialist modules (only activated ones)
-    module_results = []
-    for name in decision.activated_modules:
-        mod = MODULE_REGISTRY.get(name)
-        if mod is None:
-            continue
-        try:
-            module_results.append(mod(request_id, req.query, retrieved))
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"module {name} failed: {exc}") from exc
-
-    # 4. Generation
-    try:
-        llm_client = _build_llm_client()
-        final = synthesize(request_id, req.query, retrieved, module_results, llm_client=llm_client)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"generation failed: {exc}") from exc
-
-    latency_ms = (time.perf_counter() - t0) * 1000.0
-
-    # 5. Optional logging. A logging failure must not fail the user's query,
-    #    but it must not vanish silently either.
-    try:
-        init_db()
-        log_query(
-            query_text=req.query,
-            system="graft",
-            latency_ms=latency_ms,
-            modules_fired=decision.activated_modules,
-            retrieval_depth=str(decision.retrieval_depth),
-        )
-    except Exception as exc:
-        logger.warning(
-            "Query logging failed for request %s: %s: %s", request_id, type(exc).__name__, exc
-        )
-
+    llm_client = _build_llm_client()
+    res = execute_query(
+        query_text=req.query,
+        request_id=req.request_id,
+        retrieval_depth_override=req.retrieval_depth,
+        filters=req.filters,
+        llm_client=llm_client,
+    )
     return QueryResponse(
-        request_id=request_id,
-        answer=str(final.get("answer", "")),
-        evidence=_to_evidence_items(final.get("evidence") or retrieved),
-        routing=decision.to_dict(),
-        latency_ms=round(latency_ms, 2),
+        request_id=res["request_id"],
+        answer=res["answer"],
+        evidence=_to_evidence_items(res["evidence"]),
+        routing=res["routing"],
+        latency_ms=res["latency_ms"],
     )
 
 
