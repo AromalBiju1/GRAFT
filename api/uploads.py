@@ -98,10 +98,16 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def run_query(prompt: str, doc_ids: list[str]) -> dict:
-    # ADAPT: call the same logic /query uses (router -> retrieval -> modules -> generation),
-    # restricted to doc_ids. Return {"answer": str, "routing": {...}, "evidence": [...]}.
-    raise NotImplementedError
+def run_query(prompt: str, doc_ids: list[str]) -> dict[str, Any]:
+    from api.query_runner import execute_query
+
+    filters: dict[str, Any] | None = None
+    if len(doc_ids) == 1:
+        filters = {"document_id": doc_ids[0]}
+    elif len(doc_ids) > 1:
+        filters = {"document_id": {"$in": doc_ids}}
+
+    return execute_query(prompt, filters=filters)
 
 
 @router.post("/chat")
@@ -110,7 +116,8 @@ async def chat(req: ChatReq):
         try:
             for fid in req.file_ids:
                 while FILES.get(fid, {}).get("status") in ("uploaded", "parsing"):
-                    yield _sse("status", {"file": fid, "status": FILES[fid]["status"]})
+                    status = FILES[fid]["status"]
+                    yield _sse("status", {"file": fid, "status": status, "state": status})
                     await asyncio.sleep(0.5)
                 if FILES.get(fid, {}).get("status") != "ready":
                     reason = FILES.get(fid, {}).get("error") or "unknown file"
@@ -118,10 +125,15 @@ async def chat(req: ChatReq):
                     return
 
             result = await asyncio.to_thread(run_query, req.prompt, req.file_ids)
-            yield _sse("meta", {"routing": result.get("routing"),
-                                "evidence": result.get("evidence")})
-            for word in result["answer"].split(" "):        # simulated streaming
-                yield _sse("token", {"t": word + " "})
+            yield _sse("meta", {
+                "routing": result.get("routing"),
+                "evidence": result.get("evidence"),
+            })
+            words = result["answer"].split(" ")
+            for i, word in enumerate(words):
+                sep = " " if i < len(words) - 1 else ""
+                token_str = word + sep
+                yield _sse("token", {"t": token_str, "text": token_str})
                 await asyncio.sleep(0.01)
             yield _sse("done", {})
         except Exception:

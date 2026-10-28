@@ -34,6 +34,22 @@ def _embed_query(query: str) -> list[float]:
     return embed_text(query)
 
 
+def to_evidence_dicts(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for ev in evidence:
+        meta = ev.get("metadata") or {}
+        items.append({
+            "source": meta.get("source") or ev.get("source"),
+            "page": meta.get("page") or ev.get("page"),
+            "chunk_id": ev.get("chunk_id") or meta.get("chunk_id"),
+            "node_id": meta.get("node_id") or ev.get("node_id"),
+            "level": meta.get("level") if isinstance(meta.get("level"), int) else ev.get("level"),
+            "score": ev.get("score"),
+            "text": (ev.get("text") or "")[:600] if ev.get("text") else None,
+        })
+    return items
+
+
 def execute_query(
     query_text: str,
     request_id: str | None = None,
@@ -76,7 +92,15 @@ def execute_query(
 
     # 4. Synthesize
     try:
-        final = synthesize(req_id, query_text, retrieved, module_results, llm_client=llm_client)
+        active_llm = llm_client
+        if active_llm is None and getattr(settings, "llm_enabled", False):
+            import generation
+            try:
+                active_llm = generation.create_llm_client()
+            except Exception as exc:
+                logger.warning("LLM client creation failed (%s: %s); using fallback.", type(exc).__name__, exc)
+                active_llm = None
+        final = synthesize(req_id, query_text, retrieved, module_results, llm_client=active_llm)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"generation failed: {exc}") from exc
 
@@ -97,10 +121,11 @@ def execute_query(
             "Query logging failed for request %s: %s: %s", req_id, type(exc).__name__, exc
         )
 
+    evidence_raw = final.get("evidence") or retrieved
     return {
         "request_id": req_id,
         "answer": str(final.get("answer", "")),
-        "evidence": final.get("evidence") or retrieved,
+        "evidence": to_evidence_dicts(evidence_raw),
         "routing": decision.to_dict(),
         "latency_ms": round(latency_ms, 2),
     }
