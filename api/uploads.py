@@ -70,12 +70,16 @@ async def _process(fid: str):
         from indexing.ingest import ingest_document
         from indexing.pipeline import index_document
 
-        chunks = await asyncio.to_thread(
-            ingest_document,
-            rec["path"],
-            document_id=fid,
-        )
-        text = "\n\n".join(chunk["text"] for chunk in chunks)
+        ext = Path(rec["path"]).suffix.lower()
+        if ext == ".txt":
+            text = Path(rec["path"]).read_text(encoding="utf-8", errors="replace")
+        else:
+            chunks = await asyncio.to_thread(
+                ingest_document,
+                rec["path"],
+                document_id=fid,
+            )
+            text = "\n\n".join(chunk["text"] for chunk in chunks)
         await asyncio.to_thread(index_document, text, document_id=fid, source=rec["name"])
         rec["status"] = "ready"
     except Exception as e:
@@ -98,10 +102,16 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def run_query(prompt: str, doc_ids: list[str]) -> dict:
-    # ADAPT: call the same logic /query uses (router -> retrieval -> modules -> generation),
-    # restricted to doc_ids. Return {"answer": str, "routing": {...}, "evidence": [...]}.
-    raise NotImplementedError
+def run_query(prompt: str, doc_ids: list[str]) -> dict[str, Any]:
+    from api.query_runner import execute_query
+
+    filters: dict[str, Any] | None = None
+    if len(doc_ids) == 1:
+        filters = {"document_id": doc_ids[0]}
+    elif len(doc_ids) > 1:
+        filters = {"document_id": {"$in": doc_ids}}
+
+    return execute_query(prompt, filters=filters)
 
 
 @router.post("/chat")
@@ -110,7 +120,8 @@ async def chat(req: ChatReq):
         try:
             for fid in req.file_ids:
                 while FILES.get(fid, {}).get("status") in ("uploaded", "parsing"):
-                    yield _sse("status", {"file": fid, "status": FILES[fid]["status"]})
+                    status = FILES[fid]["status"]
+                    yield _sse("status", {"file": fid, "status": status, "state": status})
                     await asyncio.sleep(0.5)
                 if FILES.get(fid, {}).get("status") != "ready":
                     reason = FILES.get(fid, {}).get("error") or "unknown file"
@@ -118,10 +129,21 @@ async def chat(req: ChatReq):
                     return
 
             result = await asyncio.to_thread(run_query, req.prompt, req.file_ids)
-            yield _sse("meta", {"routing": result.get("routing"),
-                                "evidence": result.get("evidence")})
-            for word in result["answer"].split(" "):        # simulated streaming
-                yield _sse("token", {"t": word + " "})
+            evidence = result.get("evidence") or []
+            for ev in evidence:
+                doc_id = ev.get("document_id") or ev.get("source")
+                if doc_id and doc_id in FILES:
+                    ev["source"] = FILES[doc_id]["name"]
+
+            yield _sse("meta", {
+                "routing": result.get("routing"),
+                "evidence": evidence,
+            })
+            words = result["answer"].split(" ")
+            for i, word in enumerate(words):
+                sep = " " if i < len(words) - 1 else ""
+                token_str = word + sep
+                yield _sse("token", {"t": token_str, "text": token_str})
                 await asyncio.sleep(0.01)
             yield _sse("done", {})
         except Exception:
