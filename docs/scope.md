@@ -47,7 +47,7 @@ Acceptance: each module has a direct unit test and a module-result shape
 that `generation.synthesize` consumes.
 
 ### 4. Generation
-- Stub concatenation → LLM synthesis (Gemini/OpenAI/local)
+- Stub concatenation → LLM synthesis (Gemini/OpenAI/Groq/Ollama/llama.cpp)
 - Output: `{request_id, answer, evidence}` per interfaces §9.
 
 ### 5. Baseline (Flat RAG)

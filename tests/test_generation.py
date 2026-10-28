@@ -195,6 +195,35 @@ class TestLLMSynthesis:
     def test_prompt_handles_missing_text(self) -> None:
         assert "[1] " in build_prompt("q", [{"chunk_id": "a"}], [])
 
+    def test_prompt_budget_truncates_the_first_passage(self) -> None:
+        context = [passage("c0", "x" * 5000), passage("c1", "y" * 5000)]
+
+        prompt = build_prompt("q", context, [], max_chars=1000)
+
+        assert len(prompt) <= 1000
+        assert "[1] " in prompt
+        assert "[2]" not in prompt
+
+    def test_prompt_budget_keeps_ranked_hits_that_fit(self) -> None:
+        context = [passage(f"c{i}", "x" * 100) for i in range(5)]
+
+        prompt = build_prompt("q", context, [], max_chars=1000)
+
+        assert len(prompt) <= 1000
+        assert "[1] " in prompt
+        assert "[5] " in prompt
+
+    def test_synthesize_uses_the_prompt_budget_setting(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "llm_max_prompt_chars", 900)
+        client = Mock(return_value="Grounded answer")
+        context = [passage("c0", "x" * 5000)]
+
+        synthesize(REQUEST_ID, "q", context, [], llm_client=client)
+
+        assert len(client.call_args.args[0]) <= 900
+
 
 class TestProviderFactory:
     @pytest.mark.parametrize("provider", ["gemini", "openai"])
@@ -335,3 +364,133 @@ class TestProviderFactory:
         monkeypatch.setattr(settings, "llm_provider", provider)
         with pytest.raises(ValueError, match="injected|llm_provider"):
             create_llm_client()
+
+
+class TestHTTPProviders:
+    """Groq, Ollama, and llama.cpp all use OpenAI-compatible HTTP endpoints."""
+
+    def _mock_post(self, monkeypatch: pytest.MonkeyPatch, content: object = "HTTP answer") -> Mock:
+        response = Mock()
+        response.raise_for_status = Mock()
+        response.json.return_value = {"choices": [{"message": {"content": content}}]}
+        post = Mock(return_value=response)
+        monkeypatch.setattr("httpx.post", post)
+        return post
+
+    def test_groq_dispatch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "llm_provider", "groq")
+        monkeypatch.setattr(settings, "groq_api_key", "test-only-key")
+        monkeypatch.setattr(settings, "groq_model", "openai/gpt-oss-120b")
+        monkeypatch.setattr(settings, "groq_base_url", "https://api.groq.test/openai/v1/")
+        monkeypatch.setattr(settings, "llm_timeout_seconds", 30.0)
+        post = self._mock_post(monkeypatch, "Groq answer")
+
+        client = create_llm_client()
+
+        assert client("a prompt") == "Groq answer"
+        post.assert_called_once_with(
+            "https://api.groq.test/openai/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer test-only-key",
+            },
+            json={
+                "model": "openai/gpt-oss-120b",
+                "messages": [{"role": "user", "content": "a prompt"}],
+                "stream": False,
+            },
+            timeout=30.0,
+        )
+
+    def test_ollama_dispatch_has_no_authorization_header(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "llm_provider", "ollama")
+        monkeypatch.setattr(settings, "ollama_model", "llama3.2:3b")
+        monkeypatch.setattr(settings, "ollama_base_url", "http://127.0.0.1:11434/v1")
+        post = self._mock_post(monkeypatch, "Ollama answer")
+
+        client = create_llm_client()
+
+        assert client("prompt") == "Ollama answer"
+        assert post.call_args.kwargs["headers"] == {"Content-Type": "application/json"}
+        assert post.call_args.args[0] == "http://127.0.0.1:11434/v1/chat/completions"
+
+    @pytest.mark.parametrize("provider", ["llamacpp", "llama.cpp", "llama-cpp", "llama_cpp"])
+    def test_llamacpp_dispatch_accepts_aliases(
+        self, provider: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "llm_provider", provider)
+        monkeypatch.setattr(settings, "llamacpp_model", "graft-local")
+        monkeypatch.setattr(settings, "llamacpp_base_url", "http://127.0.0.1:8081/v1")
+        post = self._mock_post(monkeypatch, "llama.cpp answer")
+
+        client = create_llm_client()
+
+        assert client("prompt") == "llama.cpp answer"
+        assert post.call_args.kwargs["headers"] == {"Content-Type": "application/json"}
+        assert post.call_args.args[0] == "http://127.0.0.1:8081/v1/chat/completions"
+
+    def test_local_defaults_are_small_and_use_the_dev_server(self) -> None:
+        from config import Settings
+
+        fields = Settings.model_fields
+        assert fields["llamacpp_base_url"].default == "http://127.0.0.1:8081/v1"
+        assert fields["llamacpp_model"].default == "graft-local"
+        assert fields["ollama_model"].default == "llama3.2:3b"
+        assert fields["llamacpp_model_path"].default is None
+
+    def test_missing_groq_key_does_not_make_a_request(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "llm_provider", "groq")
+        monkeypatch.setattr(settings, "groq_api_key", None)
+        post = self._mock_post(monkeypatch)
+
+        with pytest.raises(ValueError, match="settings.groq_api_key"):
+            create_llm_client()
+        post.assert_not_called()
+
+    @pytest.mark.parametrize("provider", ["ollama", "llamacpp"])
+    @pytest.mark.parametrize("attribute", ["base_url", "model"])
+    def test_local_provider_requires_endpoint_and_model(
+        self, provider: str, attribute: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "llm_provider", provider)
+        monkeypatch.setattr(settings, f"{provider}_{attribute}", "")
+        with pytest.raises(ValueError, match=f"settings.{provider}_{attribute}"):
+            create_llm_client()
+
+    @pytest.mark.parametrize("content", [None, "", "   "])
+    def test_empty_http_completion_is_rejected(
+        self, content: object, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "llm_provider", "ollama")
+        self._mock_post(monkeypatch, content)
+
+        with pytest.raises(RuntimeError, match="empty response"):
+            create_llm_client()("prompt")
+
+    def test_http_error_does_not_expose_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "llm_provider", "groq")
+        monkeypatch.setattr(settings, "groq_api_key", "secret-api-key")
+        response = Mock()
+        response.raise_for_status.side_effect = RuntimeError("secret-api-key")
+        monkeypatch.setattr("httpx.post", Mock(return_value=response))
+
+        with pytest.raises(RuntimeError, match="LLM request failed") as exc:
+            create_llm_client()("prompt")
+        assert "secret-api-key" not in str(exc.value)
+        assert exc.value.__suppress_context__
+
+    def test_invalid_json_shape_is_a_sanitized_request_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "llm_provider", "llamacpp")
+        response = Mock()
+        response.raise_for_status = Mock()
+        response.json.return_value = {"unexpected": "shape"}
+        monkeypatch.setattr("httpx.post", Mock(return_value=response))
+
+        with pytest.raises(RuntimeError, match="LLM request failed"):
+            create_llm_client()("prompt")

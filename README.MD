@@ -89,7 +89,7 @@ in `.github/copilot-instructions.md` (`indexing/`, `router/`, `modules/*`,
 - **Document processing:** PyPDF / Unstructured / python-docx
 - **Embeddings:** SentenceTransformers (or Gemini/OpenAI embeddings)
 - **Vector store:** FAISS / ChromaDB / pgvector
-- **LLM:** Gemini / OpenAI API / local open-source model
+- **LLM:** Gemini / OpenAI / Groq (GPT-OSS 120B) / local via Ollama or llama.cpp
 - **NLI / contradiction detection:** transformer-based entailment models
 
 ## Getting Started
@@ -113,13 +113,38 @@ Copy-Item .env.example .env
 On macOS or Linux, activate it with `source venv/bin/activate` and copy the
 environment template with `cp .env.example .env`.
 
-Start the API from the repository root:
+### One-command dev stack
+
+Start the API, frontend, and a local llama.cpp model together:
 
 ```bash
-uvicorn api.main:app --reload
+./scripts/dev.sh
 ```
 
-Verify it by opening `http://127.0.0.1:8000/health`. The response should be
+The script reuses services already listening on the target ports and stops the
+ones it started when you press Ctrl-C. Defaults: backend on
+`http://127.0.0.1:8001` (or the next free port), frontend on
+`http://localhost:5173`, and llama.cpp on `http://127.0.0.1:8081/v1`.
+
+For the local model, either drop a `.gguf` file into `models/` or set its path:
+
+```bash
+LLAMACPP_MODEL_PATH=/absolute/path/to/your-model.gguf ./scripts/dev.sh
+```
+
+GPT-OSS 120B is only the Groq default. To use Groq instead of a local model:
+
+```bash
+LLM_PROVIDER=groq GROQ_API_KEY=... ./scripts/dev.sh
+```
+
+### Start the API alone
+
+```bash
+uvicorn api.main:app --reload --port 8001
+```
+
+Verify it by opening `http://127.0.0.1:8001/health`. The response should be
 `{"status":"ok"}`, plus the live embedder and its dimension:
 
 ```json
@@ -185,17 +210,17 @@ embedder is live.
 Start the API from the repository root:
 
 ```bash
-uvicorn api.main:app --reload
+uvicorn api.main:app --reload --port 8001
 ```
 
 ```bash
 # index a document
-curl -X POST http://127.0.0.1:8000/index \
+curl -X POST http://127.0.0.1:8001/index \
   -H 'Content-Type: application/json' \
   -d '{"text": "...", "document_id": "doc_001", "source": "example.pdf"}'
 
 # ask a question
-curl -X POST http://127.0.0.1:8000/query \
+curl -X POST http://127.0.0.1:8001/query \
   -H 'Content-Type: application/json' \
   -d '{"query": "Compare the two documents and explain every difference"}'
 ```

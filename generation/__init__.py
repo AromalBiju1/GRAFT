@@ -15,23 +15,31 @@ from typing import Any
 from modules.base import ModuleResult
 
 MAX_CONTEXT_CHUNKS = 5
+#: Default ceiling for the whole synthesis prompt. Local servers with a small
+#: context can lower this through ``LLM_MAX_PROMPT_CHARS``.
+MAX_PROMPT_CHARS = 16000
 GROUNDING_INSTRUCTION = (
     "Answer only from the provided context. If the context does not contain the answer, "
     "say 'Insufficient evidence'."
 )
 
+#: Providers served by an OpenAI-compatible /chat/completions endpoint.
+#: Maps provider name to (base URL setting, model setting, API-key setting).
+_HTTP_PROVIDERS: dict[str, tuple[str, str, str | None]] = {
+    "groq": ("groq_base_url", "groq_model", "groq_api_key"),
+    "ollama": ("ollama_base_url", "ollama_model", None),
+    "llamacpp": ("llamacpp_base_url", "llamacpp_model", None),
+}
 
-def build_prompt(
-    query: str,
-    context: list[dict[str, Any]],
-    module_results: list[dict[str, Any]],
-) -> str:
-    """Render already-normalised modules and the first five ranked retrieval hits."""
-    passages = "\n\n".join(
-        f"[{index}] {chunk.get('text') or ''}"
-        for index, chunk in enumerate(context[:MAX_CONTEXT_CHUNKS], start=1)
-    )
-    modules_json = json.dumps(module_results, indent=2, sort_keys=True, ensure_ascii=False)
+#: Common spellings accepted for llama.cpp.
+_PROVIDER_ALIASES = {
+    "llama.cpp": "llamacpp",
+    "llama-cpp": "llamacpp",
+    "llama_cpp": "llamacpp",
+}
+
+
+def _render_prompt(query: str, passages: str, modules_json: str) -> str:
     return (
         f"{GROUNDING_INSTRUCTION}\n\n"
         f"User query:\n{query}\n\n"
@@ -40,19 +48,119 @@ def build_prompt(
     )
 
 
+def build_prompt(
+    query: str,
+    context: list[dict[str, Any]],
+    module_results: list[dict[str, Any]],
+    max_chars: int | None = None,
+) -> str:
+    """Render already-normalised modules and the first five ranked retrieval hits.
+
+    ``max_chars`` caps the whole prompt. Retrieval hits are added in rank order
+    until the next one would exceed the budget; the first hit is truncated if it
+    cannot fit on its own. This keeps small-context local models (for example a
+    llama.cpp server started with ``--ctx-size 2048``) from rejecting the
+    request outright.
+    """
+    modules_json = json.dumps(module_results, indent=2, sort_keys=True, ensure_ascii=False)
+    budget = MAX_PROMPT_CHARS if max_chars is None else max(max_chars, 1)
+
+    selected: list[str] = []
+    for index, chunk in enumerate(context[:MAX_CONTEXT_CHUNKS], start=1):
+        text = str(chunk.get("text") or "")
+        entry = f"[{index}] {text}"
+        if selected:
+            candidate = "\n\n".join([*selected, entry])
+            if len(_render_prompt(query, candidate, modules_json)) > budget:
+                break
+            selected.append(entry)
+            continue
+
+        if len(_render_prompt(query, entry, modules_json)) <= budget:
+            selected.append(entry)
+            continue
+
+        # The first hit alone is too large: keep as much of it as fits.
+        base = _render_prompt(query, "", modules_json)
+        overhead = len(base) - len("(No context provided)")
+        room = max(1, budget - overhead - len(f"[{index}] "))
+        selected.append(f"[{index}] {text[:room]}")
+        break
+
+    return _render_prompt(query, "\n\n".join(selected), modules_json)
+
+
+def _create_http_client(provider: str) -> Callable[[str], str]:
+    """Build a client for an OpenAI-compatible chat-completions server.
+
+    Used by Groq (hosted) and by Ollama / llama.cpp (local). Only ``httpx``
+    (already a core dependency) is used, so enabling a local model does not
+    require installing a provider SDK.
+    """
+    from config import settings
+
+    base_url_attr, model_attr, key_attr = _HTTP_PROVIDERS[provider]
+    base_url = str(getattr(settings, base_url_attr, "") or "").strip().rstrip("/")
+    model = str(getattr(settings, model_attr, "") or "").strip()
+    if not base_url:
+        raise ValueError(f"Configure settings.{base_url_attr} before using {provider}.")
+    if not model:
+        raise ValueError(f"Configure settings.{model_attr} before using {provider}.")
+
+    key: str | None = None
+    if key_attr is not None:
+        raw_key = getattr(settings, key_attr, None)
+        if not raw_key or not str(raw_key).strip():
+            raise ValueError(f"Configure settings.{key_attr} before using {provider}.")
+        key = str(raw_key).strip()
+
+    url = f"{base_url}/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if key is not None:
+        headers["Authorization"] = f"Bearer {key}"
+    timeout = float(settings.llm_timeout_seconds)
+
+    def generate(prompt: str) -> str:
+        body = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        }
+        try:
+            import httpx
+
+            response = httpx.post(url, headers=headers, json=body, timeout=timeout)
+            response.raise_for_status()
+            data = response.json()
+            text = data["choices"][0]["message"]["content"]
+        except Exception:
+            # Transport and server errors can echo credentials; never propagate them.
+            raise RuntimeError(f"The {provider} LLM request failed.") from None
+
+        if not isinstance(text, str) or not text.strip():
+            raise RuntimeError(f"The {provider} LLM returned an empty response.")
+        return text
+
+    return generate
+
+
 def create_llm_client() -> Callable[[str], str]:
     """Explicitly initialise settings.llm_provider; never called by the fallback.
 
-    Optional SDKs are imported here, and credentials are read only from settings.
-    Local models can be injected into synthesize directly; no local loader exists.
+    Gemini and OpenAI use their optional SDKs. Groq, Ollama, and llama.cpp use
+    an OpenAI-compatible HTTP endpoint. ``local`` still means an injected
+    callable; use ``ollama`` or ``llamacpp`` for those servers.
     """
     from config import settings
 
     provider = settings.llm_provider.strip().lower()
+    provider = _PROVIDER_ALIASES.get(provider, provider)
     if provider == "local":
         raise ValueError("Local models require an injected callable or .generate(prompt) client.")
+    if provider in _HTTP_PROVIDERS:
+        return _create_http_client(provider)
     if provider not in {"gemini", "openai"}:
-        raise ValueError("llm_provider must be gemini, openai, or local")
+        raise ValueError("llm_provider must be gemini, openai, groq, ollama, llamacpp, or local")
     key = settings.gemini_api_key if provider == "gemini" else settings.openai_api_key
     if not key or not key.strip():
         raise ValueError(f"Configure settings.{provider}_api_key before using this provider.")
@@ -136,7 +244,11 @@ def synthesize(
         generate = llm_client if callable(llm_client) else getattr(llm_client, "generate", None)
         if not callable(generate):
             raise TypeError("llm_client must be callable or expose .generate(prompt)")
-        prompt = build_prompt(query, context, normalised)
+        from config import settings
+
+        prompt = build_prompt(
+            query, context, normalised, max_chars=settings.llm_max_prompt_chars
+        )
         try:
             llm_answer = generate(prompt)
         except Exception:

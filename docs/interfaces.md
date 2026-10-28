@@ -463,15 +463,30 @@ query, the first five retrieval hits' `text` fields (retrieval already sorts by
 score), and normalised module results as sorted, indented JSON. All original
 evidence remains in the response, including hits beyond the prompt's five-hit limit.
 
-Install `pip install -e ".[llm]"` for optional provider SDKs. Explicitly call
+Install `pip install -e ".[llm]"` for the Gemini/OpenAI SDKs. Explicitly call
 `generation.create_llm_client()` and pass its result as `llm_client` to select
-`settings.llm_provider`. Gemini uses `settings.gemini_api_key` and
-`settings.gemini_model`; OpenAI uses `settings.openai_api_key` and
-`settings.openai_model`. SDK imports and client construction occur only inside
-the factory. Missing keys/dependencies and provider failures raise clear errors;
-they do not silently switch to deterministic answers. `local` requires an
-injected adapter returning text; this repository has no local model loader.
-The API and benchmark callers continue using the deterministic default.
+`settings.llm_provider`:
+
+| Provider | Settings |
+|---|---|
+| `gemini` | `GEMINI_API_KEY`, `GEMINI_MODEL` |
+| `openai` | `OPENAI_API_KEY`, `OPENAI_MODEL` |
+| `groq` | `GROQ_API_KEY`, `GROQ_MODEL` (default `openai/gpt-oss-120b`), `GROQ_BASE_URL` |
+| `ollama` | `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434/v1`), `OLLAMA_MODEL` (default `llama3.2:3b`); no key |
+| `llamacpp` | `LLAMACPP_BASE_URL` (default `http://127.0.0.1:8081/v1`), `LLAMACPP_MODEL` (default `graft-local`); no key |
+| `local` | requires an injected adapter returning text |
+
+Groq, Ollama, and llama.cpp share an OpenAI-compatible HTTP client implemented
+with `httpx`, so they need no extra package. `llama.cpp`, `llama-cpp`, and
+`llama_cpp` are accepted aliases for `llamacpp`. `LLM_TIMEOUT_SECONDS` (default
+120) bounds each HTTP request. The local llama.cpp server loads a GGUF file;
+`LLAMACPP_MODEL_PATH` tells `scripts/dev.sh` where it is, while
+`LLAMACPP_MODEL` is the model name/alias sent in requests. SDK imports and
+client construction occur only inside the factory. Missing keys/dependencies
+and provider failures raise clear errors; they do not silently switch to
+deterministic answers.
+The API builds this client when `LLM_ENABLED=true`; the benchmark uses the
+deterministic default unless an `llm_client` is passed explicitly.
 
 LLM answer wording changes token-overlap F1. Runs using LLM synthesis should
 record the provider/model and should not be compared directly with pre-LLM F1

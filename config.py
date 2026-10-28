@@ -19,12 +19,40 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # LLM
-    llm_provider: str = Field(default="gemini", description="gemini | openai | local")
+    llm_provider: str = Field(
+        default="gemini",
+        description="gemini | openai | groq | ollama | llamacpp | local",
+    )
     llm_enabled: bool = Field(default=False, description="enable LLM answer synthesis in the API")
+    #: Per-request timeout for the HTTP-based providers (Groq, Ollama,
+    #: llama.cpp). Local servers may need to load a model on first use.
+    llm_timeout_seconds: float = Field(default=120.0, gt=0)
+    #: Whole-prompt character budget. Retrieval hits are added until this is
+    #: reached. Lower it for small-context local models; scripts/dev.sh sets
+    #: 6000 for llama.cpp (whose server here runs with 2048 tokens).
+    llm_max_prompt_chars: int = Field(default=16000, gt=0)
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
+
+    # Groq (OpenAI-compatible chat-completions endpoint)
+    groq_api_key: str | None = None
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+
+    # Local OpenAI-compatible servers. Start Ollama with `ollama serve` or
+    # llama.cpp with `llama-server`; neither requires an API key. The 120B model
+    # is a Groq-only default; local models are whatever fits on the machine.
+    ollama_base_url: str = "http://127.0.0.1:11434/v1"
+    ollama_model: str = "llama3.2:3b"
+    llamacpp_base_url: str = "http://127.0.0.1:8081/v1"
+    #: Model name sent in the request. llama.cpp accepts any name, but the dev
+    #: launcher starts `llama-server --alias graft-local` so they match.
+    llamacpp_model: str = "graft-local"
+    #: Path to the local .gguf file. Read by scripts/dev.sh, not by the API
+    #: (the llama.cpp server loads the model itself).
+    llamacpp_model_path: str | None = None
 
     # Embeddings
     embedding_provider: str = Field(default="sentence-transformers")

@@ -9,9 +9,12 @@
 # silently skipping the only tests that exercise real embeddings.
 #
 # Optional extras (see pyproject [project.optional-dependencies]):
-#   llm   -> google-genai / openai, only needed when LLM_PROVIDER is set
+#   llm   -> google-genai / openai, only needed for those providers
 #   nli   -> transformers + sentencepiece, only needed for NLI contradiction
 #   dev   -> pytest, ruff, mypy
+#
+# Groq and the local OpenAI-compatible servers (Ollama, llama.cpp) use httpx,
+# which is a core dependency, so they need no extra install.
 
 # --- core ---
 chromadb>=1.0,<2.0

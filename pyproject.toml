@@ -23,6 +23,9 @@ dependencies = [
   "pydantic>=2.6,<3.0",
   "pydantic-settings>=2.1,<3.0",
   "python-multipart>=0.0.9,<1.0",
+  # generation.py uses httpx for Groq and the local OpenAI-compatible servers
+  # (Ollama, llama.cpp). It is also in requirements.txt.
+  "httpx>=0.27,<1.0",
   # Document processing. indexing.chunker imports tiktoken at module level and
   # indexing.ingest imports pypdf/python-docx, so these are not optional here.
   "tiktoken>=0.7",
