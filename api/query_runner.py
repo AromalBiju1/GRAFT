@@ -38,14 +38,17 @@ def to_evidence_dicts(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for ev in evidence:
         meta = ev.get("metadata") or {}
+        doc_id = meta.get("document_id") or ev.get("document_id")
+        source = meta.get("source") or ev.get("source") or doc_id
         items.append({
-            "source": meta.get("source") or ev.get("source"),
+            "source": source,
             "page": meta.get("page") or ev.get("page"),
             "chunk_id": ev.get("chunk_id") or meta.get("chunk_id"),
             "node_id": meta.get("node_id") or ev.get("node_id"),
             "level": meta.get("level") if isinstance(meta.get("level"), int) else ev.get("level"),
             "score": ev.get("score"),
             "text": (ev.get("text") or "")[:600] if ev.get("text") else None,
+            "document_id": doc_id,
         })
     return items
 

@@ -70,12 +70,16 @@ async def _process(fid: str):
         from indexing.ingest import ingest_document
         from indexing.pipeline import index_document
 
-        chunks = await asyncio.to_thread(
-            ingest_document,
-            rec["path"],
-            document_id=fid,
-        )
-        text = "\n\n".join(chunk["text"] for chunk in chunks)
+        ext = Path(rec["path"]).suffix.lower()
+        if ext == ".txt":
+            text = Path(rec["path"]).read_text(encoding="utf-8", errors="replace")
+        else:
+            chunks = await asyncio.to_thread(
+                ingest_document,
+                rec["path"],
+                document_id=fid,
+            )
+            text = "\n\n".join(chunk["text"] for chunk in chunks)
         await asyncio.to_thread(index_document, text, document_id=fid, source=rec["name"])
         rec["status"] = "ready"
     except Exception as e:
@@ -125,9 +129,15 @@ async def chat(req: ChatReq):
                     return
 
             result = await asyncio.to_thread(run_query, req.prompt, req.file_ids)
+            evidence = result.get("evidence") or []
+            for ev in evidence:
+                doc_id = ev.get("document_id") or ev.get("source")
+                if doc_id and doc_id in FILES:
+                    ev["source"] = FILES[doc_id]["name"]
+
             yield _sse("meta", {
                 "routing": result.get("routing"),
-                "evidence": result.get("evidence"),
+                "evidence": evidence,
             })
             words = result["answer"].split(" ")
             for i, word in enumerate(words):
