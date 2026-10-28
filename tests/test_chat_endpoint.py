@@ -56,7 +56,8 @@ def test_chat_corpus_query():
 
 
 def test_chat_unknown_file():
-    r = client.post("/api/chat", json={"prompt": "Summarize this", "file_ids": ["does_not_exist_123"]})
+    payload = {"prompt": "Summarize this", "file_ids": ["does_not_exist_123"]}
+    r = client.post("/api/chat", json=payload)
     assert r.status_code == 200
 
     events = parse_sse_events(r.text)
@@ -68,9 +69,10 @@ def test_chat_unknown_file():
 
 def test_chat_document_query():
     # 1. Upload a sample document
+    content = b"GRAFT is an adaptive RAG system that constructs hierarchical tree nodes."
     upload_resp = client.post(
         "/api/files",
-        files={"file": ("sample_test_doc.txt", b"GRAFT is an adaptive RAG system that constructs hierarchical tree nodes.", "text/plain")},
+        files={"file": ("sample_test_doc.txt", content, "text/plain")},
     )
     assert upload_resp.status_code == 201
     fid = upload_resp.json()["id"]
@@ -89,7 +91,10 @@ def test_chat_document_query():
         raise TimeoutError("File processing took too long")
 
     # 3. Query with the document ID
-    chat_resp = client.post("/api/chat", json={"prompt": "What does GRAFT construct?", "file_ids": [fid]})
+    chat_resp = client.post(
+        "/api/chat",
+        json={"prompt": "What does GRAFT construct?", "file_ids": [fid]},
+    )
     assert chat_resp.status_code == 200
 
     events = parse_sse_events(chat_resp.text)

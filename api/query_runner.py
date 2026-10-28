@@ -101,7 +101,11 @@ def execute_query(
             try:
                 active_llm = generation.create_llm_client()
             except Exception as exc:
-                logger.warning("LLM client creation failed (%s: %s); using fallback.", type(exc).__name__, exc)
+                logger.warning(
+                    "LLM client creation failed (%s: %s); using fallback.",
+                    type(exc).__name__,
+                    exc,
+                )
                 active_llm = None
         final = synthesize(req_id, query_text, retrieved, module_results, llm_client=active_llm)
     except Exception as exc:

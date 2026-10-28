@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 import re
 import time
-import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -27,18 +26,10 @@ from api.routes.analytics import router as analytics_router
 from api.schemas import EvidenceItem, HealthResponse, QueryRequest, QueryResponse
 from api.uploads import router as uploads_router
 from config import settings
-from db.logger import init_db, log_query
 from embeddings import active_provider, collection_name, embed_text, embedding_dim
-from generation import synthesize
 from indexing.config import MAX_DOCUMENT_ID_LENGTH
 from indexing.pipeline import build_tree, index_document, persist_tree_nodes
 from logging_config import configure_logging
-from modules.contradiction_detection import ContradictionDetectionModule
-from modules.fact_lookup import FactLookupModule
-from modules.multi_hop import MultiHopModule
-from modules.numeric_reasoning import NumericReasoningModule
-from retrieval import retrieve
-from router import route
 from vector_store import ChromaVectorStore
 from version import __version__
 
@@ -75,7 +66,8 @@ UPLOAD_CHUNK_SIZE_TOKENS = 200
 UPLOAD_CHUNK_OVERLAP_TOKENS = 20
 UPLOAD_CLUSTER_SIZE = 4
 
-# MODULE_REGISTRY is imported from api.query_runner for backwards compatibility
+# MODULE_REGISTRY is re-exported from api.query_runner for backwards compatibility
+__all__ = ["MODULE_REGISTRY", "app"]
 
 def _warmup() -> None:
     """Load the embedder and open the Chroma collection before serving traffic.
