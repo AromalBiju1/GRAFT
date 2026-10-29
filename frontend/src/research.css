@@ -315,18 +315,29 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
   background: var(--studio-card);
   border: 1px solid var(--studio-card-border);
   border-radius: 12px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   transition: all 0.2s ease;
   overflow: hidden;
+  position: relative;
+}
+
+.research-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.4) 0%, transparent 70%);
 }
 
 .research-card:hover {
-  border-color: rgba(59, 130, 246, 0.4);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 .research-card.selected {
-  border-color: var(--studio-accent);
-  box-shadow: 0 0 0 2px var(--studio-accent-soft), 0 6px 18px rgba(0, 0, 0, 0.12);
+  border-color: rgba(99, 102, 241, 0.4);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 .card-header {
@@ -334,7 +345,7 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
   align-items: center;
   justify-content: space-between;
   padding: 12px 18px;
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.02);
   border-bottom: 1px solid var(--studio-card-border);
   gap: 12px;
   flex-wrap: wrap;
@@ -351,50 +362,83 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--studio-accent);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--studio-text);
+  letter-spacing: -0.01em;
   margin-right: 4px;
 }
 
-/* Pills */
+.card-type-tag svg {
+  color: var(--studio-accent);
+}
+
+/* Pills & Badges */
 .pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
-  font-weight: 600;
-  padding: 3px 9px;
-  border-radius: 12px;
-  line-height: 1;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 6px;
+  line-height: 1.2;
 }
 
-.badge-green {
-  background: var(--studio-green-soft);
-  color: var(--studio-green);
-  border: 1px solid rgba(16, 185, 129, 0.3);
+.complexity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
-.badge-yellow {
-  background: var(--studio-yellow-soft);
-  color: var(--studio-yellow);
-  border: 1px solid rgba(245, 158, 11, 0.3);
+.dot-emerald {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
 }
 
-.badge-red {
-  background: var(--studio-red-soft);
-  color: var(--studio-red);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+.dot-amber {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+
+.dot-rose {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+}
+
+.dot-neutral {
+  background: var(--studio-text-muted);
+}
+
+.badge-emerald {
+  background: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.badge-amber {
+  background: rgba(245, 158, 11, 0.1);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.badge-rose {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .badge-depth {
-  background: var(--studio-purple-soft);
-  color: var(--studio-purple);
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  background: rgba(99, 102, 241, 0.1);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.2);
 }
 
 .badge-neutral {
-  background: var(--studio-card-border);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--studio-text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .card-header-actions {
@@ -407,32 +451,33 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: var(--studio-panel);
-  border: 1px solid var(--studio-card-border);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--studio-text-secondary);
   font-size: 11px;
-  font-weight: 600;
-  padding: 4px 8px;
+  font-weight: 500;
+  padding: 4px 9px;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .action-btn:hover {
-  background: var(--studio-card-hover);
+  background: rgba(255, 255, 255, 0.09);
   color: var(--studio-text);
-  border-color: var(--studio-text-muted);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .action-inspect {
-  background: var(--studio-accent-soft);
-  color: var(--studio-accent);
-  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(99, 102, 241, 0.1);
+  color: #a5b4fc;
+  border-color: rgba(99, 102, 241, 0.25);
 }
 
 .action-inspect:hover {
-  background: var(--studio-accent);
-  color: #fff;
+  background: #6366f1;
+  color: #ffffff;
+  border-color: #6366f1;
 }
 
 .success-copy {
@@ -529,29 +574,30 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
   align-items: center;
   justify-content: center;
   font-size: 11px;
-  font-weight: 700;
-  color: var(--studio-accent);
-  background: var(--studio-accent-soft);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  border-radius: 10px;
-  padding: 0 6px;
+  font-weight: 600;
+  color: #818cf8;
+  background: rgba(99, 102, 241, 0.14);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 6px;
+  padding: 0 5px;
   height: 18px;
   margin: 0 2px;
-  vertical-align: 2px;
+  vertical-align: 1px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .citation-ref-btn:hover {
-  background: var(--studio-accent);
-  color: #fff;
+  background: #6366f1;
+  color: #ffffff;
+  border-color: #6366f1;
   transform: translateY(-1px);
 }
 
 /* Card Footer */
 .card-footer {
   padding: 10px 20px;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(0, 0, 0, 0.15);
   border-top: 1px solid var(--studio-card-border);
 }
 
@@ -566,29 +612,30 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: none;
-  border: 1px solid var(--studio-card-border);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--studio-text-secondary);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 3px 8px;
-  border-radius: 12px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .meta-tag-btn:hover {
-  background: var(--studio-card-hover);
-  color: var(--studio-accent);
-  border-color: var(--studio-accent);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--studio-text);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .module-chip {
   font-size: 11px;
-  background: var(--studio-card-border);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   color: var(--studio-text-secondary);
   padding: 2px 7px;
-  border-radius: 10px;
+  border-radius: 6px;
   text-transform: capitalize;
 }
 
@@ -596,7 +643,7 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
   margin-left: auto;
   font-size: 11px;
   color: var(--studio-text-muted);
-  font-family: ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, monospace;
 }
 
 /* Footer / Input Container */

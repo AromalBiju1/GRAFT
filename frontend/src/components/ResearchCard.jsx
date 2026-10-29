@@ -3,12 +3,12 @@ import ReactMarkdown from "react-markdown";
 import { copyToClipboard, exportMarkdownReport, formatBibTeX } from "../utils/research";
 
 const complexityTheme = {
-  simple: { label: "Simple", badgeClass: "badge-green" },
-  low: { label: "Simple", badgeClass: "badge-green" },
-  moderate: { label: "Moderate", badgeClass: "badge-yellow" },
-  medium: { label: "Moderate", badgeClass: "badge-yellow" },
-  complex: { label: "Complex", badgeClass: "badge-red" },
-  high: { label: "Complex", badgeClass: "badge-red" },
+  simple: { label: "Simple", dotClass: "dot-emerald", badgeClass: "badge-emerald" },
+  low: { label: "Simple", dotClass: "dot-emerald", badgeClass: "badge-emerald" },
+  moderate: { label: "Moderate", dotClass: "dot-amber", badgeClass: "badge-amber" },
+  medium: { label: "Moderate", dotClass: "dot-amber", badgeClass: "badge-amber" },
+  complex: { label: "Complex", dotClass: "dot-rose", badgeClass: "badge-rose" },
+  high: { label: "Complex", dotClass: "dot-rose", badgeClass: "badge-rose" },
 };
 
 export default function ResearchCard({
@@ -127,12 +127,13 @@ export default function ResearchCard({
 
           {routing.complexity && (
             <span
-              className={`pill-badge ${complexityInfo.badgeClass}`}
+              className={`pill-badge ${complexityInfo.badgeClass || "badge-neutral"}`}
               title={`Router Confidence: ${
                 routing.confidence ? (routing.confidence * 100).toFixed(1) + "%" : "N/A"
               }`}
             >
-              Complexity: {complexityInfo.label}
+              <span className={`complexity-dot ${complexityInfo.dotClass || "dot-neutral"}`} />
+              {complexityInfo.label}
             </span>
           )}
 
@@ -147,7 +148,7 @@ export default function ResearchCard({
                   : "Leaves + Summaries + Root"
               }
             >
-              Depth: Level {routing.retrieval_depth}
+              Level {routing.retrieval_depth}
             </span>
           )}
         </div>
