@@ -79,7 +79,7 @@ def test_config_defaults_for_local_provider(monkeypatch: pytest.MonkeyPatch) -> 
     assert config.llm_enabled is True
     assert config.api_port == 8001
     assert config.frontend_port == 5173
-    assert config.max_prompt_chars == 6000
+    assert config.max_prompt_chars == 4000
     assert config.api_reload is True
 
 

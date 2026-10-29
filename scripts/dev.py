@@ -426,7 +426,10 @@ class Config:
             "llama_cpp": "llamacpp",
         }.get(provider, provider)
         local_provider = provider in {"llamacpp", "ollama"}
-        default_prompt_chars = 6000 if local_provider else 16000
+        # A 2048-token llama.cpp context needs headroom for the answer. PDF text
+        # can tokenize at roughly 2.5-3 characters per token, so 4000 characters
+        # leaves several hundred tokens for generation.
+        default_prompt_chars = 4000 if local_provider else 16000
 
         return cls(
             api_host=env("API_HOST", "127.0.0.1"),

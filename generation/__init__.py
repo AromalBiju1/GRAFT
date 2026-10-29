@@ -18,6 +18,9 @@ MAX_CONTEXT_CHUNKS = 5
 #: Default ceiling for the whole synthesis prompt. Local servers with a small
 #: context can lower this through ``LLM_MAX_PROMPT_CHARS``.
 MAX_PROMPT_CHARS = 16000
+#: When the full module JSON does not fit, keep a compact version first: drop
+#: duplicate evidence and truncate each result to this many characters.
+MAX_COMPACT_MODULE_CHARS = 500
 GROUNDING_INSTRUCTION = (
     "Answer only from the provided context. If the context does not contain the answer, "
     "say 'Insufficient evidence'."
@@ -48,23 +51,13 @@ def _render_prompt(query: str, passages: str, modules_json: str) -> str:
     )
 
 
-def build_prompt(
+def _select_passages(
     query: str,
     context: list[dict[str, Any]],
-    module_results: list[dict[str, Any]],
-    max_chars: int | None = None,
+    modules_json: str,
+    budget: int,
 ) -> str:
-    """Render already-normalised modules and the first five ranked retrieval hits.
-
-    ``max_chars`` caps the whole prompt. Retrieval hits are added in rank order
-    until the next one would exceed the budget; the first hit is truncated if it
-    cannot fit on its own. This keeps small-context local models (for example a
-    llama.cpp server started with ``--ctx-size 2048``) from rejecting the
-    request outright.
-    """
-    modules_json = json.dumps(module_results, indent=2, sort_keys=True, ensure_ascii=False)
-    budget = MAX_PROMPT_CHARS if max_chars is None else max(max_chars, 1)
-
+    """Add ranked hits until the rendered prompt would exceed ``budget``."""
     selected: list[str] = []
     for index, chunk in enumerate(context[:MAX_CONTEXT_CHUNKS], start=1):
         text = str(chunk.get("text") or "")
@@ -87,7 +80,89 @@ def build_prompt(
         selected.append(f"[{index}] {text[:room]}")
         break
 
-    return _render_prompt(query, "\n\n".join(selected), modules_json)
+    return "\n\n".join(selected)
+
+
+def _compact_modules(module_results: list[dict[str, Any]]) -> str:
+    """Render a small module summary when the full JSON cannot fit the prompt.
+
+    Evidence is omitted because the same passages are already in the retrieval
+    context. Results are shortened rather than cut mid-JSON so the model still
+    receives valid JSON.
+    """
+    compact: list[dict[str, Any]] = []
+    for module in module_results:
+        item: dict[str, Any] = {}
+        if "module" in module:
+            item["module"] = module["module"]
+        if "confidence" in module:
+            item["confidence"] = module["confidence"]
+        if "result" in module:
+            value = module["result"]
+            if isinstance(value, str):
+                text = value
+            else:
+                try:
+                    text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+                except (TypeError, ValueError):
+                    text = str(value)
+            item["result"] = text[:MAX_COMPACT_MODULE_CHARS]
+        compact.append(item)
+    return json.dumps(compact, indent=2, sort_keys=True, ensure_ascii=False)
+
+
+def build_prompt(
+    query: str,
+    context: list[dict[str, Any]],
+    module_results: list[dict[str, Any]],
+    max_chars: int | None = None,
+) -> str:
+    """Render already-normalised modules and the first five ranked retrieval hits.
+
+    ``max_chars`` caps the whole prompt. Retrieval hits are added in rank order
+    until the next one would exceed the budget; the first hit is truncated if it
+    cannot fit on its own. If the module JSON alone is too large, a compact
+    summary is tried next, then modules are dropped entirely. This keeps
+    small-context local models (for example a llama.cpp server started with
+    ``--ctx-size 2048``) from rejecting the request outright.
+    """
+    budget = MAX_PROMPT_CHARS if max_chars is None else max(max_chars, 1)
+
+    full_modules = json.dumps(module_results, indent=2, sort_keys=True, ensure_ascii=False)
+    prompt = _render_prompt(
+        query, _select_passages(query, context, full_modules, budget), full_modules
+    )
+    if len(prompt) <= budget:
+        return prompt
+
+    compact_modules = _compact_modules(module_results)
+    prompt = _render_prompt(
+        query,
+        _select_passages(query, context, compact_modules, budget),
+        compact_modules,
+    )
+    if len(prompt) <= budget:
+        return prompt
+
+    no_modules = "[]"
+    prompt = _render_prompt(
+        query, _select_passages(query, context, no_modules, budget), no_modules
+    )
+    if len(prompt) <= budget:
+        return prompt
+
+    # Even the query alone is too long. Truncate it and spend any remaining
+    # room on retrieval context rather than returning an oversized prompt.
+    base = _render_prompt("", "", no_modules)
+    if len(base) >= budget:
+        return base[:budget]
+    truncated_query = query[: budget - len(base)]
+    prompt = _render_prompt(
+        truncated_query,
+        _select_passages(truncated_query, context, no_modules, budget),
+        no_modules,
+    )
+    return prompt[:budget]
 
 
 def _create_http_client(provider: str) -> Callable[[str], str]:

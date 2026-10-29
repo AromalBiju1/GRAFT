@@ -13,7 +13,12 @@ from unittest.mock import Mock
 import pytest
 
 from config import settings
-from generation import build_prompt, create_llm_client, synthesize
+from generation import (
+    MAX_COMPACT_MODULE_CHARS,
+    build_prompt,
+    create_llm_client,
+    synthesize,
+)
 from modules.base import ModuleResult
 from tests.modules_helpers import passage
 
@@ -212,6 +217,46 @@ class TestLLMSynthesis:
         assert len(prompt) <= 1000
         assert "[1] " in prompt
         assert "[5] " in prompt
+
+    def test_prompt_budget_shrinks_oversized_module_results(self) -> None:
+        modules = [
+            {
+                "module": "fact_lookup",
+                "confidence": 0.9,
+                "result": "x" * 5000,
+                "evidence": [{"text": "y" * 5000}],
+            }
+        ]
+        context = [passage("c0", "retrieved context " * 20)]
+
+        prompt = build_prompt("q", context, modules, max_chars=1200)
+
+        assert len(prompt) <= 1200
+        serialised = prompt.split("Module results (JSON):\n", 1)[1]
+        parsed = json.loads(serialised)
+        assert parsed[0]["module"] == "fact_lookup"
+        assert parsed[0]["confidence"] == 0.9
+        assert len(parsed[0]["result"]) <= MAX_COMPACT_MODULE_CHARS
+        assert "evidence" not in parsed[0]
+        assert "retrieved context" in prompt
+
+    def test_prompt_budget_drops_modules_when_compaction_is_not_enough(self) -> None:
+        modules = [
+            {"module": f"m{i}", "confidence": 0.5, "result": "x" * 2000}
+            for i in range(20)
+        ]
+
+        prompt = build_prompt("q", [], modules, max_chars=600)
+
+        assert len(prompt) <= 600
+        serialised = prompt.split("Module results (JSON):\n", 1)[1]
+        assert json.loads(serialised) == []
+
+    def test_prompt_budget_truncates_a_huge_query(self) -> None:
+        prompt = build_prompt("q" * 5000, [], [], max_chars=400)
+
+        assert len(prompt) <= 400
+        assert "User query:" in prompt
 
     def test_synthesize_uses_the_prompt_budget_setting(
         self, monkeypatch: pytest.MonkeyPatch

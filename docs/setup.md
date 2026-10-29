@@ -48,7 +48,9 @@ Key vars (see `config.py`):
   or `local` (an injected callable)
 - `LLM_TIMEOUT_SECONDS` — HTTP timeout for Groq/Ollama/llama.cpp (default `120`)
 - `LLM_MAX_PROMPT_CHARS` — whole-prompt character budget (default `16000`;
-  the dev launcher lowers it to `6000` for local providers)
+  the dev launcher lowers it to `4000` for local providers so a 2048-token
+  llama.cpp server still has room for the answer. Raise it if you increase
+  the server's `--ctx-size`)
 - `CHROMA_PATH` — default `.graft/chroma`
 - `DB_PATH` — default `db/graft_logs.db`
 - `API_HOST / API_PORT` — default `127.0.0.1:8000`; the dev launcher and the

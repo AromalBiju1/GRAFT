@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = Field(default=120.0, gt=0)
     #: Whole-prompt character budget. Retrieval hits are added until this is
     #: reached. Lower it for small-context local models; the dev launcher sets
-    #: 6000 for llama.cpp (whose server here runs with 2048 tokens).
+    #: 4000 for llama.cpp (whose server here runs with 2048 tokens).
     llm_max_prompt_chars: int = Field(default=16000, gt=0)
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
