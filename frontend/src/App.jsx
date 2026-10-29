@@ -1,20 +1,31 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import Sidebar from "./components/Sidebar";
 import Feed from "./components/Feed";
 import InputBar from "./components/InputBar";
 import AttachmentTray from "./components/AttachmentTray";
+import ResearchInspector from "./components/ResearchInspector";
 import { sendChat, uploadFile, pollFileStatus, validate } from "./api";
 import "./chat.css";
+import "./research.css";
 
 const GREETING = {
-  id: "g",
+  id: "greeting",
   role: "assistant",
-  text: "Hi! Ask me anything about the GRAFT corpus, or upload documents to query them specifically.",
+  text: "Welcome to the GRAFT Research Studio. Enter a research hypothesis or query across the knowledge base, or attach documents to explore hierarchical RAPTOR tree retrieval and reasoning modules.",
+  routing: {
+    complexity: "simple",
+    confidence: 1.0,
+    retrieval_depth: 0,
+    activated_modules: ["fact_lookup"],
+  },
+  evidence: [],
+  module_results: [],
+  latency_ms: null,
 };
 
 const newSession = () => ({
   id: crypto.randomUUID(),
-  title: "New chat",
+  title: "New Research Dossier",
   messages: [GREETING],
   files: [],
   fileIds: [],
@@ -29,6 +40,14 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [drag, setDrag] = useState(false);
+
+  // Research Studio Workbench State
+  const [scope, setScope] = useState("all"); // "all" | "files"
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState("evidence"); // "evidence" | "modules" | "citations"
+  const [focusedCardId, setFocusedCardId] = useState(null);
+  const [focusedEvidenceIndex, setFocusedEvidenceIndex] = useState(null);
+
   const cancel = useRef(null);
   const depth = useRef(0);
 
@@ -41,6 +60,21 @@ export default function App() {
     [activeId]
   );
 
+  // Find the message currently focused in the inspector
+  const activeInspectorMessage = useMemo(() => {
+    if (focusedCardId) {
+      const found = active.messages.find((m) => m.id === focusedCardId && m.role === "assistant");
+      if (found) return found;
+    }
+    // Fallback: latest assistant message with evidence or routing
+    for (let i = active.messages.length - 1; i >= 0; i--) {
+      if (active.messages[i].role === "assistant" && active.messages[i].id !== "greeting") {
+        return active.messages[i];
+      }
+    }
+    return active.messages.find((m) => m.role === "assistant") || GREETING;
+  }, [active.messages, focusedCardId]);
+
   const addFiles = async (list) => {
     const { accepted, errors } = validate(list, queue);
     if (errors.length) {
@@ -48,7 +82,6 @@ export default function App() {
     }
     if (!accepted.length) return;
 
-    // Start each accepted file in uploading state
     const startingQueueItems = accepted.map((item) => ({
       ...item,
       state: "uploading",
@@ -92,6 +125,9 @@ export default function App() {
           ...s,
           fileIds: Array.from(new Set([...(s.fileIds || []), uploaded.id])),
         }));
+
+        // Automatically switch scope to attached documents if files were added
+        setScope("files");
       } catch (err) {
         setQueue((q) =>
           q.map((f) =>
@@ -100,7 +136,7 @@ export default function App() {
               : f
           )
         );
-        setNotice(`Failed to process ${item.file.name}: ${err.message}`);
+        setNotice(`Failed to index ${item.file.name}: ${err.message}`);
       }
     }
   };
@@ -116,13 +152,15 @@ export default function App() {
     const sessionFids = active.fileIds || [];
     const allFileIds = Array.from(new Set([...sessionFids, ...readyFids]));
 
-    const activeFilesList = queue.map((f) => f.file.name);
+    // Respect user's explicit retrieval scope
+    const queryFileIds = scope === "files" ? allFileIds : [];
+    const activeFilesList = scope === "files" ? queue.map((f) => f.file.name) : [];
 
     patch((s) => ({
       ...s,
       title:
-        s.title === "New chat"
-          ? (prompt || activeFilesList[0] || "New chat").slice(0, 32)
+        s.title === "New Research Dossier"
+          ? (prompt || activeFilesList[0] || "Dossier").slice(0, 36)
           : s.title,
       messages: [
         ...s.messages,
@@ -138,9 +176,14 @@ export default function App() {
           text: "",
           routing: null,
           evidence: [],
+          module_results: [],
+          latency_ms: null,
         },
       ],
     }));
+
+    setFocusedCardId(aid);
+    setFocusedEvidenceIndex(null);
 
     const setAssistant = (fn) =>
       patch((s) => ({
@@ -154,7 +197,7 @@ export default function App() {
 
     cancel.current = sendChat({
       prompt,
-      fileIds: allFileIds,
+      fileIds: queryFileIds,
       onEvent: (ev, d) => {
         if (ev === "token") {
           setAssistant((m) => ({
@@ -166,7 +209,10 @@ export default function App() {
             ...m,
             routing: d.routing || m.routing,
             evidence: d.evidence || m.evidence,
+            module_results: d.module_results || m.module_results || [],
+            latency_ms: d.latency_ms ?? m.latency_ms,
           }));
+          setInspectorOpen(true);
         } else if (ev === "status") {
           setQueue((q) =>
             q.map((f) =>
@@ -176,7 +222,7 @@ export default function App() {
         } else if (ev === "error") {
           setAssistant((m) => ({
             ...m,
-            text: d.message || "An error occurred",
+            text: d.message || "An error occurred during query execution.",
             error: true,
           }));
         }
@@ -190,6 +236,17 @@ export default function App() {
         cancel.current = null;
       },
     });
+  };
+
+  const handleSelectCitation = (evidenceIndex) => {
+    setFocusedEvidenceIndex(evidenceIndex);
+    setActiveTab("evidence");
+    setInspectorOpen(true);
+  };
+
+  const handleOpenInspector = (tab) => {
+    if (tab) setActiveTab(tab);
+    setInspectorOpen(true);
   };
 
   const dropProps = {
@@ -213,40 +270,86 @@ export default function App() {
     },
   };
 
+  const totalSessionFiles = (active.files?.length || 0) + queue.length;
+
   return (
-    <div className="app">
+    <div className={`studio-app ${inspectorOpen ? "with-inspector" : ""}`}>
+      {/* Navigation Sidebar */}
       <Sidebar
         open={sidebar}
         onToggle={() => setSidebar((o) => !o)}
         sessions={sessions}
         activeId={activeId}
-        onSelect={setActiveId}
+        onSelect={(id) => {
+          setActiveId(id);
+          setFocusedCardId(null);
+          setFocusedEvidenceIndex(null);
+        }}
         files={active.files}
         onNew={() => {
           const s = newSession();
           setSessions((a) => [s, ...a]);
           setActiveId(s.id);
           setQueue([]);
+          setFocusedCardId(null);
+          setFocusedEvidenceIndex(null);
         }}
       />
-      <main className="chat" {...dropProps}>
-        <header>
-          <img src="/graft-logo.png" alt="" width="40" height="40" />
-          <div>
-            <h1>GRAFT</h1>
-            <p>Adaptive, Complexity-Aware Retrieval-Augmented Generation</p>
+
+      {/* Main Studio Workspace Pane */}
+      <main className="studio-workspace" {...dropProps}>
+        <header className="studio-header">
+          <div className="header-branding">
+            <img src="/graft-logo.png" alt="GRAFT Logo" width="34" height="34" />
+            <div>
+              <div className="title-row">
+                <h1>GRAFT Research Studio</h1>
+                <span className="version-pill">v0.1.0 • RAPTOR Adaptive RAG</span>
+              </div>
+              <p>Gated Retrieval Activation Framework with Hierarchical Tree Storage</p>
+            </div>
+          </div>
+
+          <div className="header-controls">
+            <button
+              className={`inspector-toggle-btn ${inspectorOpen ? "active" : ""}`}
+              onClick={() => setInspectorOpen((o) => !o)}
+              title={inspectorOpen ? "Hide Research Inspector" : "Show Research Inspector"}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="15" y1="3" x2="15" y2="21"></line>
+              </svg>
+              <span>{inspectorOpen ? "Hide Inspector" : "Show Inspector"}</span>
+            </button>
           </div>
         </header>
-        <Feed messages={active.messages} busy={busy} />
+
+        {/* Research Feed */}
+        <div className="studio-feed-wrapper">
+          <Feed
+            messages={active.messages}
+            busy={busy}
+            selectedCardId={focusedCardId || activeInspectorMessage?.id}
+            onFocusCard={(id) => setFocusedCardId(id)}
+            onSelectCitation={handleSelectCitation}
+            onOpenInspector={handleOpenInspector}
+          />
+        </div>
+
         {drag && (
-          <div className="dropzone">Drop PDF, DOCX or TXT files to attach</div>
+          <div className="dropzone">Drop PDF, DOCX or TXT files to index into ChromaDB</div>
         )}
-        <footer>
+
+        {/* Workspace Footer Input Area */}
+        <footer className="studio-footer">
           {notice && (
-            <div className="notice" role="alert">
-              {notice}
+            <div className="notice-banner" role="alert">
+              <span>{notice}</span>
+              <button className="notice-dismiss" onClick={() => setNotice("")}>✕</button>
             </div>
           )}
+
           <AttachmentTray
             files={queue}
             onRemove={(id) => {
@@ -260,6 +363,7 @@ export default function App() {
               }
             }}
           />
+
           <InputBar
             value={text}
             onChange={setText}
@@ -268,9 +372,22 @@ export default function App() {
             onPick={addFiles}
             busy={busy}
             canSend={!!text.trim()}
+            scope={scope}
+            onScopeChange={setScope}
+            hasFiles={totalSessionFiles > 0}
           />
         </footer>
       </main>
+
+      {/* Right Persistent Inspector Pane */}
+      <ResearchInspector
+        activeMessage={activeInspectorMessage}
+        isOpen={inspectorOpen}
+        onClose={() => setInspectorOpen(false)}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        focusedEvidenceIndex={focusedEvidenceIndex}
+      />
     </div>
   );
 }
