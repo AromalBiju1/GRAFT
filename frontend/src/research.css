@@ -1,44 +1,46 @@
 /* ==========================================================================
-   GRAFT Research Studio Design System
+   GRAFT Research Studio Design System — Modern Zinc Theme
    ========================================================================== */
 
 :root {
-  --studio-bg: #0f1115;
-  --studio-panel: #161920;
-  --studio-card: #1c202a;
-  --studio-card-border: #282e3d;
-  --studio-card-hover: #212633;
-  --studio-selected: #2a344a;
-  --studio-text: #e6edf3;
-  --studio-text-secondary: #9aa4b2;
-  --studio-text-muted: #6e7683;
-  --studio-accent: #3b82f6;
-  --studio-accent-hover: #2563eb;
-  --studio-accent-soft: rgba(59, 130, 246, 0.15);
+  --studio-bg: #09090b;
+  --studio-panel: #0f0f12;
+  --studio-card: #141417;
+  --studio-card-border: rgba(255, 255, 255, 0.08);
+  --studio-card-hover: #1a1a1e;
+  --studio-selected: rgba(99, 102, 241, 0.12);
+  --studio-selected-border: rgba(99, 102, 241, 0.35);
+  --studio-text: #f4f4f5;
+  --studio-text-secondary: #a1a1aa;
+  --studio-text-muted: #71717a;
+  --studio-accent: #6366f1;
+  --studio-accent-hover: #4f46e5;
+  --studio-accent-soft: rgba(99, 102, 241, 0.12);
   --studio-green: #10b981;
-  --studio-green-soft: rgba(16, 185, 129, 0.15);
+  --studio-green-soft: rgba(16, 185, 129, 0.12);
   --studio-yellow: #f59e0b;
-  --studio-yellow-soft: rgba(245, 158, 11, 0.15);
+  --studio-yellow-soft: rgba(245, 158, 11, 0.12);
   --studio-red: #ef4444;
-  --studio-red-soft: rgba(239, 68, 68, 0.15);
+  --studio-red-soft: rgba(239, 68, 68, 0.12);
   --studio-purple: #8b5cf6;
-  --studio-purple-soft: rgba(139, 92, 246, 0.15);
+  --studio-purple-soft: rgba(139, 92, 246, 0.12);
 }
 
 @media (prefers-color-scheme: light) {
   :root {
-    --studio-bg: #f8fafc;
+    --studio-bg: #fafafa;
     --studio-panel: #ffffff;
     --studio-card: #ffffff;
-    --studio-card-border: #e2e8f0;
-    --studio-card-hover: #f1f5f9;
-    --studio-selected: #e0f2fe;
-    --studio-text: #0f172a;
-    --studio-text-secondary: #475569;
-    --studio-text-muted: #94a3b8;
-    --studio-accent: #2563eb;
-    --studio-accent-hover: #1d4ed8;
-    --studio-accent-soft: rgba(37, 99, 235, 0.1);
+    --studio-card-border: rgba(0, 0, 0, 0.08);
+    --studio-card-hover: #f4f4f5;
+    --studio-selected: #e0e7ff;
+    --studio-selected-border: #6366f1;
+    --studio-text: #09090b;
+    --studio-text-secondary: #52525b;
+    --studio-text-muted: #a1a1aa;
+    --studio-accent: #4f46e5;
+    --studio-accent-hover: #4338ca;
+    --studio-accent-soft: rgba(79, 70, 229, 0.1);
     --studio-green: #059669;
     --studio-green-soft: rgba(5, 150, 105, 0.1);
     --studio-yellow: #d97706;
@@ -50,6 +52,42 @@
   }
 }
 
+/* ==========================================================================
+   Universal Dark Scrollbar System (No White Default OS Scrollbars)
+   ========================================================================== */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-content, .studio-feed-wrapper {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
 /* App Studio Layout */
 .studio-app {
   display: flex;
@@ -59,6 +97,63 @@
   background: var(--studio-bg);
   color: var(--studio-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Sidebar Modern Zinc Polish */
+.sidebar {
+  background: var(--studio-panel) !important;
+  border-right: 1px solid var(--studio-card-border) !important;
+}
+
+.sidebar h2 {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--studio-text-muted);
+  margin: 18px 0 6px;
+  padding: 0 4px;
+}
+
+.sidebar li button {
+  font-size: 13px;
+  color: var(--studio-text-secondary);
+  border-radius: 6px;
+  padding: 8px 10px;
+  transition: all 0.15s ease;
+}
+
+.sidebar li button:hover {
+  background: var(--studio-card-hover);
+  color: var(--studio-text);
+}
+
+.sidebar li button.active {
+  background: var(--studio-selected) !important;
+  color: var(--studio-text) !important;
+  font-weight: 500;
+}
+
+.new-chat {
+  border: 1px solid var(--studio-card-border) !important;
+  background: var(--studio-card) !important;
+  color: var(--studio-text) !important;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  padding: 8px 12px;
+  transition: all 0.15s ease;
+}
+
+.new-chat:hover {
+  background: var(--studio-card-hover) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+.sidebar .file {
+  font-size: 12px;
+  color: var(--studio-text-secondary);
+  padding: 6px 8px;
 }
 
 /* Main Workspace */
