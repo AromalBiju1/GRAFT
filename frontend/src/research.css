@@ -701,8 +701,8 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
 
 .scope-pills {
   display: inline-flex;
-  background: var(--studio-card);
-  border: 1px solid var(--studio-card-border);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   padding: 2px;
   gap: 2px;
@@ -716,7 +716,7 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
   border: none;
   color: var(--studio-text-secondary);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 4px 10px;
   border-radius: 6px;
   cursor: pointer;
@@ -725,11 +725,14 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
 
 .scope-pill-btn:hover:not(:disabled) {
   color: var(--studio-text);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .scope-pill-btn.active {
-  background: var(--studio-accent);
-  color: #fff;
+  background: #27272a;
+  color: #f4f4f5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  font-weight: 600;
 }
 
 .scope-pill-btn:disabled {
@@ -742,6 +745,129 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
   color: var(--studio-text-muted);
   text-align: right;
   padding-right: 4px;
+}
+
+/* Modern Input Bar & Actions */
+.inputbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--studio-card) !important;
+  border: 1px solid var(--studio-card-border) !important;
+  border-radius: 12px !important;
+  padding: 8px 12px !important;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.inputbar:focus-within {
+  border-color: rgba(99, 102, 241, 0.5) !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15), 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+}
+
+.inputbar textarea {
+  flex: 1;
+  resize: none;
+  background: none !important;
+  border: 0 !important;
+  outline: 0 !important;
+  color: var(--studio-text) !important;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 6px 4px;
+  max-height: 200px;
+}
+
+.inputbar textarea::placeholder {
+  color: var(--studio-text-muted);
+}
+
+.attach-btn {
+  color: var(--studio-text-secondary) !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 8px !important;
+  padding: 6px !important;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.attach-btn:hover {
+  color: var(--studio-text) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.send {
+  width: 34px !important;
+  height: 34px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  background: #6366f1 !important;
+  color: #fff !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.send:hover:not(:disabled) {
+  background: #4f46e5 !important;
+  transform: translateY(-1px);
+}
+
+.send:disabled {
+  opacity: 0.35 !important;
+  cursor: not-allowed;
+}
+
+.send.stop {
+  background: #ef4444 !important;
+}
+
+/* Modern Attachment Chip */
+.tray {
+  list-style: none;
+  margin: 0 0 8px !important;
+  padding: 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex !important;
+  gap: 8px !important;
+  align-items: center !important;
+  padding: 6px 10px !important;
+  border: 1px solid var(--studio-card-border) !important;
+  border-radius: 8px !important;
+  background: var(--studio-card) !important;
+  max-width: 280px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.chip-icon {
+  background: rgba(99, 102, 241, 0.15) !important;
+  color: #818cf8 !important;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
+.chip-meta strong {
+  font-size: 12px !important;
+  color: var(--studio-text) !important;
+}
+
+.chip-meta small {
+  color: #10b981 !important;
+  font-size: 10px !important;
 }
 
 /* Right Persistent Research Inspector */
