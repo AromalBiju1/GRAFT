@@ -136,6 +136,8 @@ async def chat(req: ChatReq):
             yield _sse("meta", {
                 "routing": result.get("routing"),
                 "evidence": evidence,
+                "module_results": result.get("module_results") or [],
+                "latency_ms": result.get("latency_ms"),
             })
             words = result["answer"].split(" ")
             for i, word in enumerate(words):

@@ -218,6 +218,7 @@ def query(req: QueryRequest) -> QueryResponse:
         answer=res["answer"],
         evidence=_to_evidence_items(res["evidence"]),
         routing=res["routing"],
+        module_results=res.get("module_results", []),
         latency_ms=res["latency_ms"],
     )
 
