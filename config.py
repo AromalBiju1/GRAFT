@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     #: llama.cpp). Local servers may need to load a model on first use.
     llm_timeout_seconds: float = Field(default=120.0, gt=0)
     #: Whole-prompt character budget. Retrieval hits are added until this is
-    #: reached. Lower it for small-context local models; scripts/dev.sh sets
+    #: reached. Lower it for small-context local models; the dev launcher sets
     #: 6000 for llama.cpp (whose server here runs with 2048 tokens).
     llm_max_prompt_chars: int = Field(default=16000, gt=0)
     gemini_api_key: str | None = None
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     #: Model name sent in the request. llama.cpp accepts any name, but the dev
     #: launcher starts `llama-server --alias graft-local` so they match.
     llamacpp_model: str = "graft-local"
-    #: Path to the local .gguf file. Read by scripts/dev.sh, not by the API
+    #: Path to the local .gguf file. Read by the dev launcher, not by the API
     #: (the llama.cpp server loads the model itself).
     llamacpp_model_path: str | None = None
 

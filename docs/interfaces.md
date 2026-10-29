@@ -480,7 +480,7 @@ Groq, Ollama, and llama.cpp share an OpenAI-compatible HTTP client implemented
 with `httpx`, so they need no extra package. `llama.cpp`, `llama-cpp`, and
 `llama_cpp` are accepted aliases for `llamacpp`. `LLM_TIMEOUT_SECONDS` (default
 120) bounds each HTTP request. The local llama.cpp server loads a GGUF file;
-`LLAMACPP_MODEL_PATH` tells `scripts/dev.sh` where it is, while
+`LLAMACPP_MODEL_PATH` tells the dev launcher where it is, while
 `LLAMACPP_MODEL` is the model name/alias sent in requests. SDK imports and
 client construction occur only inside the factory. Missing keys/dependencies
 and provider failures raise clear errors; they do not silently switch to

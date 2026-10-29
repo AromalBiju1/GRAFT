@@ -118,24 +118,58 @@ environment template with `cp .env.example .env`.
 Start the API, frontend, and a local llama.cpp model together:
 
 ```bash
+# macOS / Linux
 ./scripts/dev.sh
 ```
 
-The script reuses services already listening on the target ports and stops the
-ones it started when you press Ctrl-C. Defaults: backend on
+```powershell
+# Windows PowerShell
+.\scripts\dev.ps1
+```
+
+```bat
+rem Windows cmd
+scripts\dev.bat
+```
+
+All three wrappers run the same cross-platform launcher (`scripts/dev.py`), so
+the behaviour is identical on Windows and Unix. You need Python 3.10+ and
+Node.js 18+. Set `PYTHON` to choose an interpreter explicitly. Otherwise an
+activated venv, or a `venv/` / `.venv/` in the repository, is used for the
+backend; if none exists, the launcher uses its own interpreter.
+
+The launcher reuses services already listening on the target ports and stops
+the ones it started when you press Ctrl-C. Defaults: backend on
 `http://127.0.0.1:8001` (or the next free port), frontend on
 `http://localhost:5173`, and llama.cpp on `http://127.0.0.1:8081/v1`.
 
-For the local model, either drop a `.gguf` file into `models/` or set its path:
+For the local model, either drop a `.gguf` file into `models/` or set its path
+in `.env`:
+
+```env
+LLAMACPP_MODEL_PATH=C:\models\your-model.gguf
+# Optional for a custom llama.cpp build:
+LLAMA_SERVER_BIN=C:\tools\llama.cpp\llama-server.exe
+```
+
+On macOS/Linux, use the same variables with Unix paths, or pass one on the
+command line:
 
 ```bash
 LLAMACPP_MODEL_PATH=/absolute/path/to/your-model.gguf ./scripts/dev.sh
 ```
 
-GPT-OSS 120B is only the Groq default. To use Groq instead of a local model:
+GPT-OSS 120B is only the Groq default. To use Groq instead of a local model,
+set it in `.env` (all platforms) or in the shell:
 
 ```bash
 LLM_PROVIDER=groq GROQ_API_KEY=... ./scripts/dev.sh
+```
+
+```powershell
+$env:LLM_PROVIDER = "groq"
+$env:GROQ_API_KEY = "..."
+.\scripts\dev.ps1
 ```
 
 ### Start the API alone

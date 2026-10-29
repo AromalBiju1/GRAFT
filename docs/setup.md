@@ -6,12 +6,20 @@
 - Node 18+ for the frontend (optional for backend-only work)
 - Git
 
+On Windows, install Python 3 from <https://www.python.org/downloads/> (the
+`py -3` launcher is supported) and Node.js from <https://nodejs.org/>. Use
+PowerShell or `cmd.exe` from the repository root.
+
 ## 1. Clone & Python env
 
 ```bash
 git clone https://github.com/AromalBiju1/GRAFT
 cd GRAFT
-python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m venv .venv
+# macOS/Linux:
+source .venv/bin/activate
+# Windows PowerShell:
+# .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"        # installs graft + dev deps from pyproject.toml
 # or minimal:
 pip install -r requirements.txt
@@ -27,7 +35,7 @@ network access; an uncached model then falls back to the heuristic.
 ## 2. Environment file
 
 ```bash
-cp .env.example .env
+cp .env.example .env        # Windows PowerShell: Copy-Item .env.example .env
 # Edit .env — set LLM_ENABLED=true and LLM_PROVIDER when you want real LLM calls.
 # The stubs run without any key.
 ```
@@ -40,7 +48,7 @@ Key vars (see `config.py`):
   or `local` (an injected callable)
 - `LLM_TIMEOUT_SECONDS` — HTTP timeout for Groq/Ollama/llama.cpp (default `120`)
 - `LLM_MAX_PROMPT_CHARS` — whole-prompt character budget (default `16000`;
-  `scripts/dev.sh` lowers it to `6000` for local providers)
+  the dev launcher lowers it to `6000` for local providers)
 - `CHROMA_PATH` — default `.graft/chroma`
 - `DB_PATH` — default `db/graft_logs.db`
 - `API_HOST / API_PORT` — default `127.0.0.1:8000`; the dev launcher and the
@@ -55,8 +63,8 @@ Key vars (see `config.py`):
 
 ### One-command dev stack
 
-`./scripts/dev.sh` starts all three processes and stops the ones it started when
-you press Ctrl-C:
+The launcher starts all three processes and stops the ones it started when you
+press Ctrl-C:
 
 - the FastAPI backend (starts at `http://127.0.0.1:8001`; if that port is taken
   by another app, it moves to the next free port)
@@ -64,23 +72,67 @@ you press Ctrl-C:
 - a local llama.cpp server (default `http://127.0.0.1:8081/v1`), unless you
   select a hosted provider
 
-Services already listening on those ports are reused, so the script is safe to
-run twice. `API_PORT` pins the backend port if you need a specific one. The
-script reads `.env`; `LLM_ENABLED` and `LLM_PROVIDER` default to `true` and
-`llamacpp` for this launcher.
+All platforms run the same Python implementation, `scripts/dev.py`; the
+`dev.sh` / `dev.ps1` / `dev.bat` files are thin wrappers.
 
 ```bash
-cp .env.example .env
+# macOS / Linux
+./scripts/dev.sh
+```
+
+```powershell
+# Windows PowerShell
+.\scripts\dev.ps1
+```
+
+```bat
+rem Windows cmd
+scripts\dev.bat
+```
+
+If PowerShell blocks local scripts because of its execution policy, use
+`scripts\dev.bat` or run
+`powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1`.
+
+Services already listening on those ports are reused, so the launcher is safe
+to run twice. `API_PORT` pins the backend port if you need a specific one. The
+launcher reads `.env`; `LLM_ENABLED` and `LLM_PROVIDER` default to `true` and
+`llamacpp` for this launcher. Values already in the environment override
+`.env`: use `VAR=value ./scripts/dev.sh` on macOS/Linux, or set `$env:VAR` /
+`set VAR=...` before the Windows wrapper.
+
+The launcher looks for `PYTHON`, then an activated venv, then a `venv/` or
+`.venv/` Python, then the interpreter that started it. Node.js and npm must be
+on `PATH` for the frontend. On Windows, services are stopped with `taskkill
+/T`, so the Vite and uvicorn child processes are cleaned up with the launcher.
+
+```bash
+cp .env.example .env        # Windows PowerShell: Copy-Item .env.example .env
 # Either set a model path:
 #   LLAMACPP_MODEL_PATH=/absolute/path/to/your-model.gguf
 # or drop a .gguf into models/ and leave the path unset.
 ./scripts/dev.sh
 ```
 
+Windows `.env` example:
+
+```env
+LLAMACPP_MODEL_PATH=C:\models\your-model.gguf
+LLAMA_SERVER_BIN=C:\tools\llama.cpp\llama-server.exe
+LLAMACPP_ARGS="-ngl 99 --jinja --ctx-size 2048"
+```
+
 To use Groq instead (no local model):
 
 ```bash
 LLM_ENABLED=true LLM_PROVIDER=groq GROQ_API_KEY=... ./scripts/dev.sh
+```
+
+```powershell
+$env:LLM_ENABLED = "true"
+$env:LLM_PROVIDER = "groq"
+$env:GROQ_API_KEY = "..."
+.\scripts\dev.ps1
 ```
 
 ### LLM backends
@@ -115,11 +167,23 @@ LLAMA_SERVER_BIN=/path/to/llama-server
 LLAMACPP_ARGS="-ngl 99 --jinja --ctx-size 2048"
 ```
 
-The server is expected at `http://127.0.0.1:8081/v1`. `scripts/dev.sh` starts it
+On Windows, use normal Windows paths (forward slashes also work):
+
+```env
+LLM_ENABLED=true
+LLM_PROVIDER=llamacpp
+LLAMACPP_MODEL_PATH=C:\models\your-model.gguf
+LLAMA_SERVER_BIN=C:\tools\llama.cpp\llama-server.exe
+LLAMACPP_ARGS="-ngl 99 --jinja --ctx-size 2048"
+```
+
+The server is expected at `http://127.0.0.1:8081/v1`. The dev launcher starts it
 with `--alias graft-local`, so `LLAMACPP_MODEL=graft-local` matches. If you run
-`llama-server` yourself on 8081, the script reuses it. If your GGUF only loads
+`llama-server` yourself on 8081, the launcher reuses it. If your GGUF only loads
 with a custom llama.cpp build, point `LLAMA_SERVER_BIN` at that binary and put
-the build's flags in `LLAMACPP_ARGS`.
+the build's flags in `LLAMACPP_ARGS`. Quote `LLAMACPP_ARGS` because it contains
+spaces; the launcher splits it into separate arguments. Quote any individual
+path inside it that also contains spaces.
 
 Ollama:
 

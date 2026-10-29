@@ -232,7 +232,7 @@ db/graft_logs.db
 # longer reproduce.
 results.json
 
-# Local GGUF models used by scripts/dev.sh. Drop a model here or point
+# Local GGUF models used by the dev launcher. Drop a model here or point
 # LLAMACPP_MODEL_PATH at one elsewhere; model weights do not belong in git.
 models/*
 !models/.gitkeep

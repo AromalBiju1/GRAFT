@@ -1,0 +1,7 @@
+# Keep Windows launchers in CRLF even when the repository is checked out on
+# Unix; cmd.exe and PowerShell are happiest with native line endings. Keep the
+# Unix launcher and Python sources in LF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sh text eol=lf
+*.py text eol=lf
