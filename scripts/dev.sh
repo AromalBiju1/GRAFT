@@ -183,6 +183,25 @@ sys.exit(1)
 PY
 }
 
+frontend_proxied() {
+  "$PYTHON_BIN" - "$FRONTEND_PORT" <<'PY'
+import json
+import sys
+import urllib.request
+
+port = sys.argv[1]
+for host in ("127.0.0.1", "localhost", "[::1]"):
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/health", timeout=2.0) as response:
+            data = json.load(response)
+    except Exception:
+        continue
+    if data.get("status") == "ok":
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
 frontend_port_open() {
   port_open "127.0.0.1" "$FRONTEND_PORT" || port_open "::1" "$FRONTEND_PORT"
 }
@@ -405,7 +424,11 @@ else
 fi
 
 if frontend_ready; then
-  info "frontend already running at http://localhost:${FRONTEND_PORT}"
+  if frontend_proxied; then
+    info "frontend already running at http://localhost:${FRONTEND_PORT} (wired to the API)"
+  else
+    die "frontend on port ${FRONTEND_PORT} is not proxying /health to the API; stop it and rerun $0"
+  fi
 elif frontend_port_open; then
   die "port ${FRONTEND_PORT} is occupied by an app that is not GRAFT"
 else
@@ -418,9 +441,19 @@ else
   (
     cd "$ROOT/frontend"
     GRAFT_API="http://${API_HOST}:${API_PORT}" \
-      "$ROOT/frontend/node_modules/.bin/vite" --port "$FRONTEND_PORT"
+      "$ROOT/frontend/node_modules/.bin/vite" --port "$FRONTEND_PORT" --strictPort
   ) &
-  PIDS+=("$!")
+  frontend_pid=$!
+  PIDS+=("$frontend_pid")
+  if wait_for_pid "$frontend_pid" 30 frontend_proxied; then
+    info "frontend is ready and proxying to the API"
+  else
+    wait_status=$?
+    if (( wait_status == 2 )); then
+      die "frontend exited before proxying /health; check the log above"
+    fi
+    warn "frontend started but /health is not proxying to the API within 30s"
+  fi
 fi
 
 info "frontend: http://localhost:${FRONTEND_PORT}"
