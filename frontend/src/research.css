@@ -263,53 +263,51 @@ pre, code, .trace-viewer-block pre, .bibtex-code-block, .apa-list, .inspector-co
   gap: 24px;
 }
 
-/* User Query Prompt Box */
-.user-query-container {
-  background: var(--studio-panel);
-  border: 1px solid var(--studio-card-border);
-  border-left: 3px solid var(--studio-accent);
-  border-radius: 10px;
-  padding: 14px 18px;
+/* User Query Bubble (Sleek, Right-Aligned Conversational Stream) */
+.user-query-row {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
 }
 
-.query-meta-header {
+.user-query-bubble {
+  max-width: 78%;
+  background: #27272a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px 18px 4px 18px;
+  padding: 12px 18px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.query-avatar {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--studio-accent);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
-.query-attached-files {
+.user-query-attachments {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  margin-bottom: 2px;
 }
 
-.attached-file-pill {
+.attached-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
-  background: var(--studio-card-hover);
-  border: 1px solid var(--studio-card-border);
-  padding: 2px 8px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 3px 8px;
   border-radius: 6px;
   color: var(--studio-text-secondary);
 }
 
-.query-content {
-  font-size: 15px;
-  line-height: 1.5;
-  color: var(--studio-text);
+.user-query-text {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #f4f4f5;
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Structured Research Card */

@@ -34,26 +34,23 @@ export default function Feed({
       {messages.map((m, idx) => {
         if (m.role === "user") {
           return (
-            <div key={m.id} className="user-query-container">
-              <div className="query-meta-header">
-                <span className="query-avatar">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="4"></circle>
-                    <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"></path>
-                  </svg>
-                  Researcher Query
-                </span>
+            <div key={m.id} className="user-query-row">
+              <div className="user-query-bubble">
                 {m.files?.length > 0 && (
-                  <div className="query-attached-files">
+                  <div className="user-query-attachments">
                     {m.files.map((name) => (
-                      <span key={name} className="attached-file-pill">
-                        📄 {name}
+                      <span key={name} className="attached-file-chip">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                          <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                        {name}
                       </span>
                     ))}
                   </div>
                 )}
+                <div className="user-query-text">{m.text}</div>
               </div>
-              <div className="query-content">{m.text}</div>
             </div>
           );
         }
