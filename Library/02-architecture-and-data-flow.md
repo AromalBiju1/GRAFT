@@ -341,13 +341,15 @@ All modules receive `(request_id, query, retrieved)` and return a
 
 | Module | What it does now | Upgrade path |
 |---|---|---|
-| `fact_lookup` | Picks the highest-scoring chunk and returns its text (up to 800 chars) as the answer | LLM synthesis over evidence |
+| `fact_lookup` | Ranks passages by query-term coverage first and retrieval score second, then returns the best-matching sentence (up to 800 chars). Short headings expand into the following list item or sentence | LLM synthesis over evidence |
 | `multi_hop` | Concatenates the top 3 passages into a joint chain; needs >= 2 passages | Query decomposition + iterative retrieval |
-| `numeric_reasoning` | Extracts numbers, then sums/averages/differences based on keywords | Table-aware parsing and arithmetic |
+| `numeric_reasoning` | Parses numbers with currency, percent, and magnitude suffixes; reads pipe/space-aligned tables by column; labels values by nearby text; excludes years, pages, and references from aggregates. Supports extract, sum, average, min, max, difference, and percent change | Embedding-based table understanding and broader unit conversion |
 | `contradiction_detection` | Compares overlapping passage pairs. Uses an NLI model when installed (`microsoft/deberta-v3-mnli`), otherwise a keyword-overlap + negation heuristic | Better NLI thresholds and claim extraction |
 
-These are deliberately simple, deterministic heuristics. The interfaces are the
-stable part; each module can be upgraded without changing the pipeline.
+These are deterministic and offline: they never call an LLM themselves, so the
+same context produces the same result. Generation remains the only place that
+can invoke a model. The interfaces are the stable part; each module can be
+upgraded without changing the pipeline.
 
 ### 4.4 Generation
 

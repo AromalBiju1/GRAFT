@@ -689,9 +689,15 @@ and `__call__` (delegates to `run`). Modules are invoked as
 
 **Class:** `FactLookupModule` (`name="fact_lookup"`).
 
-**Behavior:** Returns the highest-scoring context chunk's text (max 800 chars)
-as the result, with that chunk as evidence. Empty context returns
-"No context provided.", confidence 0.0, metadata reason `empty_context`.
+**Behavior:** Extractive, deterministic, offline. Passages are ranked by
+query-term coverage first and retrieval score second, so a highly relevant
+lower-scored chunk can beat an unrelated higher-scored one. The best-matching
+sentence is returned instead of the whole chunk (max 800 chars); a short
+heading-like sentence is expanded with the next sentence or list item, and
+source line breaks are preserved. Empty context returns "No context provided.",
+confidence 0.0, metadata reason `empty_context`. Blank passages fall back to
+"No answer found in context." Metadata records `selection`, `matched_terms`,
+`query_coverage`, `source_chunk_id`, and `answer_chars`.
 
 **Upgrade path:** LLM synthesis over the evidence set.
 
@@ -710,19 +716,37 @@ with `---` separators, confidence = average score * 0.9, metadata
 
 **Class:** `NumericReasoningModule` (`name="numeric_reasoning"`).
 
-**Behavior:** Extracts numbers with a regex, then chooses an operation from
-keywords:
-- `sum` / `total` / `add` -> sum
-- `average` / `mean` -> mean
-- `difference` / `subtract` / `compare` with >= 2 numbers -> first minus second
-- otherwise -> extract the first 5 numbers
-- no numbers -> `None`, operation `no_numbers`
+**Behavior:** Deterministic, offline extraction and arithmetic.
 
-Confidence is 0.85 for arithmetic, 0.5 for extraction, 0.2 for no numbers.
-Evidence is the first 3 context items.
+- Parses numbers with currency symbols, percentages, magnitude suffixes
+  (`k`, `m`, `bn`, `thousand`, `million`, ...), signs, and parenthesised
+  negatives.
+- Detects pipe-delimited and conservatively space-aligned tables, then labels
+  each numeric cell with its column header. Non-table values get the nearest
+  noun phrase from the same clause, falling back to the sentence subject.
+- Excludes page numbers and document references from aggregates. Bare
+  four-digit years are also excluded from `sum`, `average`, `min`, `max`, and
+  `percent_change` unless the question explicitly asks about a year.
+- Picks an operation from the query:
+  - `sum` / `total` / `add` -> sum
+  - `average` / `mean` -> mean
+  - `minimum` / `lowest` / `smallest` -> min
+  - `maximum` / `highest` / `largest` -> max
+  - `difference` / `subtract` / `compare` with >= 2 operands -> first minus
+    second
+  - percentage increase/decrease/change -> percent change
+  - otherwise -> extract the most query-relevant values (max 10)
+- Orders `difference` and `percent_change` operands by where their entity
+  appears in the question, so "difference between revenue and costs" computes
+  revenue minus costs.
+- Returns per-operand details (`operand_details`), a shared `unit`, and a
+  preformatted string when possible. Evidence contains only passages that
+  contributed an operand (max 3).
+- No numbers -> `None`, operation `no_numbers`, confidence 0.2.
 
-**Known limitation:** `difference` is positional, not semantic; it does not
-understand units or table structure.
+Confidence is 0.9 for a computed result whose operands matched the query
+label, 0.85 for a fallback computation, 0.75 for mixed units, 0.3 when the
+operation lacks operands, and 0.55 for plain extraction.
 
 ### `modules/contradiction_detection/__init__.py`
 

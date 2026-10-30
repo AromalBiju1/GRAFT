@@ -60,6 +60,51 @@ class TestFactLookup:
         result = FactLookupModule()(REQUEST_ID, "q", [passage("a", "   ", 0.9)])
         assert result.result == "No answer found in context."
 
+    def test_extracts_query_relevant_sentence_from_long_chunk(self) -> None:
+        text = (
+            "Compiler design covers parsing and code generation. "
+            "The default port for HTTPS is 443. "
+            "Unrelated historical notes follow."
+        )
+        result = FactLookupModule()(
+            REQUEST_ID,
+            "What is the default port for HTTPS?",
+            [passage("c1", text, 0.9)],
+        )
+
+        assert result.result == "The default port for HTTPS is 443."
+        assert result.metadata["selection"] == "sentence"
+
+    def test_prefers_query_matching_passage_when_scores_are_close(self) -> None:
+        context = [
+            passage("unrelated", "Compiler design notes.", 0.70),
+            passage("answer", "Paris is the capital of France.", 0.68),
+        ]
+
+        result = FactLookupModule()(
+            REQUEST_ID,
+            "What is the capital of France?",
+            context,
+        )
+
+        assert result.evidence[0]["chunk_id"] == "answer"
+        assert result.result == "Paris is the capital of France."
+
+    def test_expands_a_short_heading_with_the_following_sentence(self) -> None:
+        text = (
+            "Module II\n13 a) Consider the grammar. "
+            "14 a) Write FIRST and FOLLOW sets. Unrelated appendix notes."
+        )
+        result = FactLookupModule()(
+            REQUEST_ID,
+            "retrieve module 2 questions",
+            [passage("c1", text, 0.9)],
+        )
+
+        assert "Module II" in result.result
+        assert "13 a)" in result.result
+        assert "Unrelated appendix notes" not in result.result
+
     def test_rejects_invalid_request_id(self) -> None:
         with pytest.raises(ValueError):
             FactLookupModule()("", "q", [passage("a", "x", 0.9)])
