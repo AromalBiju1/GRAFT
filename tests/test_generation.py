@@ -14,6 +14,7 @@ import pytest
 
 from config import settings
 from generation import (
+    GROUNDING_INSTRUCTION,
     MAX_COMPACT_MODULE_CHARS,
     build_prompt,
     create_llm_client,
@@ -146,10 +147,7 @@ class TestLLMSynthesis:
         out = synthesize(REQUEST_ID, "What is the total?", context, modules, llm_client=client)
         prompt = client.call_args.args[0]
         assert "What is the total?" in prompt
-        assert (
-            "Answer only from the provided context. If the context does not contain the answer, "
-            "say 'Insufficient evidence'."
-        ) in prompt
+        assert GROUNDING_INSTRUCTION in prompt
         for i in range(5):
             assert f"retrieved passage {i}" in prompt
         assert "retrieved passage 5" not in prompt
@@ -199,6 +197,11 @@ class TestLLMSynthesis:
 
     def test_prompt_handles_missing_text(self) -> None:
         assert "[1] " in build_prompt("q", [{"chunk_id": "a"}], [])
+
+    def test_prompt_does_not_prime_the_model_with_a_refusal_phrase(self) -> None:
+        prompt = build_prompt("q", [passage("c0", "answer")], [])
+
+        assert "Insufficient evidence" not in prompt
 
     def test_prompt_budget_truncates_the_first_passage(self) -> None:
         context = [passage("c0", "x" * 5000), passage("c1", "y" * 5000)]

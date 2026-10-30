@@ -171,8 +171,8 @@ Gated Retrieval Activation Framework for Trees. The project in this repository.
 
 ### Grounding instruction
 
-The prompt text that tells an LLM to answer only from retrieved context and to
-say "Insufficient evidence" when it cannot. It is used only in LLM mode.
+The prompt text that tells an LLM to answer only from retrieved context and not
+use outside knowledge. It is used only in LLM mode.
 
 ---
 

@@ -470,9 +470,10 @@ first module result > first context passage > no-answer fallback.
 - The LLM call is optional and never happens unless a client is passed.
 - Provider errors are converted to a generic message so credentials do not
   leak.
-- The grounding instruction tells the model to say "Insufficient evidence"
-  when context is missing, but deterministic mode does not enforce that
-  wording.
+- The grounding instruction tells the model to answer only from context and
+  not use outside knowledge. It deliberately avoids a short refusal phrase
+  because small local models echoed "Insufficient evidence" even when the
+  answer was present. Models still decline naturally when context is unrelated.
 
 ---
 

@@ -67,19 +67,17 @@ async def _process(fid: str):
     rec = FILES[fid]
     rec["status"] = "parsing"
     try:
-        from indexing.ingest import ingest_document
+        from indexing.ingest import parse_document
         from indexing.pipeline import index_document
 
         ext = Path(rec["path"]).suffix.lower()
         if ext == ".txt":
             text = Path(rec["path"]).read_text(encoding="utf-8", errors="replace")
         else:
-            chunks = await asyncio.to_thread(
-                ingest_document,
-                rec["path"],
-                document_id=fid,
-            )
-            text = "\n\n".join(chunk["text"] for chunk in chunks)
+            # Parse raw text and let index_document chunk it once. Chunking here
+            # and again inside index_document duplicated overlap passages and
+            # pushed those duplicates to the top of retrieval results.
+            text = await asyncio.to_thread(parse_document, rec["path"])
         await asyncio.to_thread(index_document, text, document_id=fid, source=rec["name"])
         rec["status"] = "ready"
     except Exception as e:

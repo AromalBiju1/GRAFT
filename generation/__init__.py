@@ -21,9 +21,12 @@ MAX_PROMPT_CHARS = 16000
 #: When the full module JSON does not fit, keep a compact version first: drop
 #: duplicate evidence and truncate each result to this many characters.
 MAX_COMPACT_MODULE_CHARS = 500
+#: Keep the instruction free of a short refusal phrase. Small local models were
+#: echoing "Insufficient evidence" back even when the context contained the
+#: answer; without that phrase they answer from context and still decline when
+#: the context is unrelated.
 GROUNDING_INSTRUCTION = (
-    "Answer only from the provided context. If the context does not contain the answer, "
-    "say 'Insufficient evidence'."
+    "Answer using only the provided context. Do not use outside knowledge."
 )
 
 #: Providers served by an OpenAI-compatible /chat/completions endpoint.
