@@ -48,6 +48,9 @@ def test_chat_corpus_query():
     assert "complexity" in meta_event["routing"]
     assert "evidence" in meta_event
     assert isinstance(meta_event["evidence"], list)
+    assert "module_results" in meta_event
+    assert isinstance(meta_event["module_results"], list)
+    assert "latency_ms" in meta_event
 
     tokens = [e[1]["text"] for e in events if e[0] == "token"]
     assert len(tokens) > 0

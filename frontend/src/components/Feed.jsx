@@ -1,52 +1,77 @@
 import { useEffect, useRef } from "react";
-import ReactMarkdown from "react-markdown";
-import RoutingBadges from "../RoutingBadges";
-import EvidenceList from "../EvidenceList";
+import ResearchCard from "./ResearchCard";
 
-export default function Feed({ messages, busy }) {
+export default function Feed({
+  messages,
+  busy,
+  selectedCardId,
+  onFocusCard,
+  onSelectCitation,
+  onOpenInspector,
+}) {
   const end = useRef(null);
   const box = useRef(null);
 
   useEffect(() => {
-    // follow the stream unless the user scrolled up
     const b = box.current;
-    if (b && b.scrollHeight - b.scrollTop - b.clientHeight < 120) {
-      end.current?.scrollIntoView({ block: "end" });
+    if (b && b.scrollHeight - b.scrollTop - b.clientHeight < 160) {
+      end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, busy]);
+
+  // Find the query corresponding to each assistant turn
+  const getQueryForMessage = (idx) => {
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i]?.role === "user") {
+        return messages[i].text;
+      }
+    }
+    return "Research Query";
+  };
 
   return (
     <div className="feed" ref={box} role="log" aria-live="polite">
-      {messages.map((m) => (
-        <div key={m.id} className={`msg ${m.role} ${m.error ? "err" : ""}`}>
-          {m.role === "user" ? (
-            <>
-              {m.files?.length > 0 && (
-                <div className="msg-files">
-                  {m.files.map((n) => (
-                    <span key={n}>{n}</span>
-                  ))}
-                </div>
-              )}
-              {m.text}
-            </>
-          ) : (
-            <>
-              {m.routing && <RoutingBadges routing={m.routing} />}
-              <ReactMarkdown>{m.text || (busy ? "…" : "")}</ReactMarkdown>
-              {Array.isArray(m.evidence) && m.evidence.length > 0 && (
-                <details className="evidence-accordion">
-                  <summary>
-                    Inspect Evidence ({m.evidence.length}{" "}
-                    {m.evidence.length === 1 ? "source" : "sources"})
-                  </summary>
-                  <EvidenceList evidence={m.evidence} />
-                </details>
-              )}
-            </>
-          )}
-        </div>
-      ))}
+      {messages.map((m, idx) => {
+        if (m.role === "user") {
+          return (
+            <div key={m.id} className="user-query-container">
+              <div className="query-meta-header">
+                <span className="query-avatar">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="4"></circle>
+                    <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"></path>
+                  </svg>
+                  Researcher Query
+                </span>
+                {m.files?.length > 0 && (
+                  <div className="query-attached-files">
+                    {m.files.map((name) => (
+                      <span key={name} className="attached-file-pill">
+                        📄 {name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="query-content">{m.text}</div>
+            </div>
+          );
+        }
+
+        // Assistant turn -> Full structured Research Card
+        return (
+          <ResearchCard
+            key={m.id}
+            message={m}
+            queryText={getQueryForMessage(idx)}
+            busy={busy && idx === messages.length - 1}
+            isSelected={selectedCardId === m.id}
+            onFocusCard={onFocusCard}
+            onSelectCitation={onSelectCitation}
+            onOpenInspector={onOpenInspector}
+          />
+        );
+      })}
       <div ref={end} />
     </div>
   );

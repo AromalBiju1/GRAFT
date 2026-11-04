@@ -129,10 +129,15 @@ def execute_query(
         )
 
     evidence_raw = final.get("evidence") or retrieved
+    module_results_dicts = [
+        m.to_dict() if hasattr(m, "to_dict") else dict(m)
+        for m in module_results
+    ]
     return {
         "request_id": req_id,
         "answer": str(final.get("answer", "")),
         "evidence": to_evidence_dicts(evidence_raw),
         "routing": decision.to_dict(),
+        "module_results": module_results_dicts,
         "latency_ms": round(latency_ms, 2),
     }

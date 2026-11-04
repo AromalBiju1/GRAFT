@@ -29,6 +29,7 @@ class QueryResponse(BaseModel):
     answer: str
     evidence: list[EvidenceItem] = Field(default_factory=list)
     routing: dict[str, Any] | None = None
+    module_results: list[dict[str, Any]] = Field(default_factory=list)
     latency_ms: float | None = None
 
 
